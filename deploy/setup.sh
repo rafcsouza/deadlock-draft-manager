@@ -71,6 +71,11 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now tatinuanga
 sudo systemctl restart tatinuanga
 
+echo "==> Agendando o backup diário do banco (04:00 de Brasília)"
+( crontab -l 2>/dev/null | grep -v 'deploy/backup.sh' || true
+  echo "0 7 * * * bash $APP_DIR/deploy/backup.sh >> $HOME/backups/backup.log 2>&1" ) | crontab -
+mkdir -p "$HOME/backups"
+
 echo "==> Configurando o endereço público"
 if [ -z "${DOMAIN:-}" ]; then
   IP=$(curl -fsS https://api.ipify.org)
