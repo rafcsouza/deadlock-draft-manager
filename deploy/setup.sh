@@ -29,9 +29,12 @@ if ! command -v caddy >/dev/null; then
 fi
 
 echo "==> Liberando as portas 80 e 443 no firewall do Ubuntu"
-for port in 80 443; do
-  sudo iptables -C INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null ||
-    sudo iptables -I INPUT 6 -p tcp --dport "$port" -m state --state NEW -j ACCEPT
+# As regras precisam ficar antes do REJECT que a imagem da Oracle já traz.
+for port in 443 80; do
+  if ! sudo iptables -C INPUT -p tcp --dport "$port" -m state --state NEW -j ACCEPT 2>/dev/null; then
+    reject=$(sudo iptables -L INPUT --line-numbers -n | awk '/REJECT/ {print $1; exit}')
+    sudo iptables -I INPUT "${reject:-1}" -p tcp --dport "$port" -m state --state NEW -j ACCEPT
+  fi
 done
 sudo netfilter-persistent save
 
