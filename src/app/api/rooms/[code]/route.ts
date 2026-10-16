@@ -13,7 +13,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ code: stri
   const user = await getCurrentUser()
   if (!user) return Response.json({ error: "Faça login." }, { status: 401 })
   const heroIds = (await getHeroes()).map((h) => h.id)
-  const view = pollRoom(code, heroIds, { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar) })
+  const view = pollRoom(code, heroIds, { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar), guest: user.isGuest })
   return Response.json(view, { headers: { "Cache-Control": "no-store" } })
 }
 

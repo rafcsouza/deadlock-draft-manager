@@ -31,7 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
       const leave = joinRoom(
         code,
         heroIds,
-        { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar) },
+        { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar), guest: user.isGuest },
         send,
       )
       // Comentário SSE periódico (ignorado pelo navegador) para proxies não fecharem a conexão parada.

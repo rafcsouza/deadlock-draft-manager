@@ -50,7 +50,8 @@ export const slotsFor = (team: Team, action: Step["action"]) =>
 // ---------- Estado da sala visto por um jogador ----------
 
 // bot: jogador fictício, controlado pelo anfitrião (para testes).
-export type PlayerView = { id: string; name: string; avatar: string | null; online: boolean; bot: boolean }
+// guest: entrou como visitante, sem conta.
+export type PlayerView = { id: string; name: string; avatar: string | null; online: boolean; bot: boolean; guest: boolean }
 
 export type ChatMessage = { id: string; authorId: string; author: string; text: string; at: number }
 
@@ -91,6 +92,8 @@ export type RoomView = {
   code: string
   serverNow: number
   hostId: string | null
+  // Dono da sala (quem entrou primeiro).
+  host: PlayerView | null
   lobby: PlayerView[]
   teams: Record<Team, PlayerView[]>
   // Fases: capitães (playerFirst null) → escolha de jogadores → heróis (first definido).

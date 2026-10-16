@@ -1,6 +1,6 @@
 "use client"
 
-export type Player = { id: string; name: string; avatar?: string | null; bot?: boolean }
+export type Player = { id: string; name: string; avatar?: string | null; bot?: boolean; guest?: boolean }
 
 // Cor estável por jogador, derivada do nome.
 function hue(name: string) {
@@ -20,6 +20,8 @@ type Props = {
   player: Player
   isMe?: boolean
   captain?: boolean
+  // Dono da sala: ganha um selo de estrela no canto.
+  host?: boolean
   selected?: boolean
   offline?: boolean
   draggable?: boolean
@@ -28,7 +30,7 @@ type Props = {
 }
 
 // Quadrado com a foto (ou as iniciais) do jogador; o nome aparece ao passar o mouse.
-export function PlayerAvatar({ player, isMe, captain, selected, offline, draggable, onClick, hint }: Props) {
+export function PlayerAvatar({ player, isMe, captain, host, selected, offline, draggable, onClick, hint }: Props) {
   return (
     <button
       type="button"
@@ -51,10 +53,13 @@ export function PlayerAvatar({ player, isMe, captain, selected, offline, draggab
         initials(player.name)
       )}
       {captain && <Crown className="absolute -top-3 left-1/2 h-4 w-4 -translate-x-1/2" />}
+      {host && <HostBadge className="absolute -bottom-1.5 -right-1.5 h-5 w-5" />}
       <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-semibold normal-case text-background opacity-0 transition-opacity group-hover:opacity-100">
         {player.name}
         {isMe && " (você)"}
         {player.bot && " · fictício"}
+        {player.guest && " · visitante"}
+        {host && " · dono da sala"}
         {captain && " · Capitão"}
         {offline && " · offline"}
         {hint && <span className="block text-[10px] font-normal opacity-70">{hint}</span>}
@@ -99,5 +104,19 @@ export function Crown({ className }: { className?: string }) {
     <svg className={`text-yellow-400 drop-shadow ${className}`} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5L3 7z" />
     </svg>
+  )
+}
+
+// Selo do dono da sala: estrela dourada num círculo, no canto do avatar.
+export function HostBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={`flex items-center justify-center rounded-full border-2 border-card bg-yellow-400 text-background shadow ${className}`}
+      aria-hidden="true"
+    >
+      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2.5l2.9 6.2 6.6.7-5 4.5 1.4 6.6L12 17.2l-5.9 3.3 1.4-6.6-5-4.5 6.6-.7z" />
+      </svg>
+    </span>
   )
 }

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { CoinFlip } from "@/components/coin-flip"
 import { Logo } from "@/components/logo"
 import { MatchResultPanel } from "@/components/match-result"
-import { EmptySlot, PlayerAvatar } from "@/components/player-avatar"
+import { EmptySlot, HostBadge, PlayerAvatar } from "@/components/player-avatar"
 import { RoomChat } from "@/components/room-chat"
 import {
   buildPlayerSteps,
@@ -125,6 +125,22 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
           </span>
           <CopyLinkButton />
         </div>
+        {view.host && (
+          <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground">
+            <HostBadge className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">
+              {view.host.id === meId ? (
+                <span className="font-semibold text-foreground">Sua sala</span>
+              ) : (
+                <>
+                  Sala de <span className="font-semibold text-foreground">{view.host.name}</span>
+                </>
+              )}
+              {view.host.guest && " (visitante)"}
+              {!view.host.online && " · offline"}
+            </span>
+          </div>
+        )}
 
         <div
           onDragOver={(e) => !started && e.preventDefault()}
@@ -144,6 +160,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                   key={p.id}
                   player={p}
                   isMe={p.id === meId}
+                  host={p.id === view.hostId}
                   selected={selected === p.id}
                   draggable={movable || canPickPlayer}
                   onClick={() => {
@@ -202,6 +219,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 meId={meId}
                 isCaptain={captainTeam === team}
                 isHost={isHost}
+                hostId={view.hostId}
                 picks={heroesOf(team, "pick")}
                 active={current?.team === team || pickTeam === team}
                 locked={started}
@@ -630,6 +648,7 @@ function TeamCard({
   meId,
   isCaptain,
   isHost,
+  hostId,
   picks,
   active,
   locked,
@@ -642,6 +661,7 @@ function TeamCard({
   meId: string
   isCaptain: boolean
   isHost: boolean
+  hostId: string | null
   picks: Hero[]
   active: boolean
   locked: boolean
@@ -706,6 +726,7 @@ function TeamCard({
               player={p}
               isMe={p.id === meId}
               captain={i === 0}
+              host={p.id === hostId}
               offline={!p.online}
               draggable={removable}
               onClick={() => removable && onRemove(p.id)}

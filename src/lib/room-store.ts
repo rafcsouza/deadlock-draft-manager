@@ -24,7 +24,7 @@ import {
 // As salas vivem enquanto o servidor estiver no ar; uma partida só vai para o banco
 // depois que o draft termina, alguém informa o ID da partida e o resultado é confirmado.
 
-type PlayerInfo = { id: string; name: string; avatar: string | null }
+type PlayerInfo = { id: string; name: string; avatar: string | null; guest?: boolean }
 type Connection = { userId: string; send: (data: string) => void }
 
 type Room = {
@@ -151,13 +151,21 @@ function viewFor(room: Room, userId: string): RoomView {
   const online = onlineIds(room)
   const player = (id: string): PlayerView => {
     const info = room.users.get(id)
-    return { id, name: info?.name ?? "?", avatar: info?.avatar ?? null, online: online.has(id), bot: isBot(room, id) }
+    return {
+      id,
+      name: info?.name ?? "?",
+      avatar: info?.avatar ?? null,
+      online: online.has(id),
+      bot: isBot(room, id),
+      guest: info?.guest ?? false,
+    }
   }
   const myTeam = teamOf(room, userId)
   return {
     code: room.code,
     serverNow: Date.now(),
     hostId: room.hostId,
+    host: room.hostId ? player(room.hostId) : null,
     lobby: [...online].filter((id) => !teamOf(room, id)).map(player),
     teams: { a: room.teams.a.map(player), b: room.teams.b.map(player) },
     playerFirst: room.playerFirst,
