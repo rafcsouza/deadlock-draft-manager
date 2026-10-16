@@ -1,5 +1,5 @@
 import { Logo } from "@/components/logo"
-import { StartDraftButton } from "@/components/start-draft-button"
+import { MenuButton } from "@/components/menu-button"
 import { site } from "@/lib/site"
 
 export default function HomePage() {
@@ -16,7 +16,7 @@ export default function HomePage() {
         style={{ background: "var(--team-b)" }}
       />
 
-      <div className="relative flex aspect-square w-full max-w-sm flex-col items-center justify-center gap-8 rounded-2xl border border-border bg-card/80 p-10 text-center shadow-2xl shadow-black/60 backdrop-blur">
+      <div className="relative flex aspect-square w-full max-w-sm flex-col items-center justify-center gap-7 rounded-2xl border border-border bg-card/80 p-10 text-center shadow-2xl shadow-black/60 backdrop-blur">
         {/* Faixa dividida entre os dois times */}
         <div className="absolute inset-x-0 top-0 flex h-1 overflow-hidden rounded-t-2xl">
           <span className="flex-1 bg-team-a" />
@@ -28,13 +28,19 @@ export default function HomePage() {
         <Corner className="bottom-3 left-3 -scale-y-100" />
         <Corner className="bottom-3 right-3 -scale-100" />
 
-        <div className="space-y-4">
-          <Logo className="mx-auto h-12 w-12" />
+        <div className="space-y-3">
+          <Logo className="mx-auto h-8 w-8" />
           <h1 className="font-display text-3xl font-bold uppercase tracking-wide">{site.name}</h1>
           <p className="text-sm text-muted-foreground">Pick & ban para Deadlock</p>
         </div>
 
-        <StartDraftButton />
+        <nav className="flex w-full flex-col gap-2.5">
+          <MenuButton href="/draft/novo" primary>
+            Criar Draft
+          </MenuButton>
+          <MenuButton href="/leaderboards">Leaderboards</MenuButton>
+          <MenuButton href="/historico">Histórico de partidas</MenuButton>
+        </nav>
       </div>
     </main>
   )
