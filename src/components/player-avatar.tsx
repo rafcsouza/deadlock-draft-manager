@@ -1,4 +1,6 @@
-export type Player = { id: string; name: string }
+"use client"
+
+export type Player = { id: string; name: string; avatar?: string | null; bot?: boolean }
 
 // Cor estável por jogador, derivada do nome.
 function hue(name: string) {
@@ -7,9 +9,11 @@ function hue(name: string) {
   return h
 }
 
+// "Fictício 11" → "F11"; "Ana Souza" → "AS"; "rafael" → "RA".
 function initials(name: string) {
-  const [first = "", second = ""] = name.split(" ")
-  return (first[0] ?? "") + (second[0] ?? "")
+  const [first = "", second] = name.split(" ")
+  if (second && /^\d+$/.test(second)) return first[0] + second
+  return second ? first[0] + second[0] : first.slice(0, 2)
 }
 
 type Props = {
@@ -17,13 +21,14 @@ type Props = {
   isMe?: boolean
   captain?: boolean
   selected?: boolean
+  offline?: boolean
   draggable?: boolean
   onClick?: () => void
   hint?: string
 }
 
-// Quadrado com as iniciais do jogador; o nome aparece ao passar o mouse.
-export function PlayerAvatar({ player, isMe, captain, selected, draggable, onClick, hint }: Props) {
+// Quadrado com a foto (ou as iniciais) do jogador; o nome aparece ao passar o mouse.
+export function PlayerAvatar({ player, isMe, captain, selected, offline, draggable, onClick, hint }: Props) {
   return (
     <button
       type="button"
@@ -36,15 +41,22 @@ export function PlayerAvatar({ player, isMe, captain, selected, draggable, onCli
       aria-label={player.name}
       className={`group relative flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-bold uppercase text-white transition-transform ${
         draggable ? "cursor-grab hover:-translate-y-0.5" : "cursor-default"
-      } ${selected ? "ring-2 ring-foreground" : isMe ? "ring-2 ring-foreground/40" : ""}`}
+      } ${selected ? "ring-2 ring-foreground" : isMe ? "ring-2 ring-foreground/40" : ""} ${offline ? "opacity-40 grayscale" : ""}`}
       style={{ background: `hsl(${hue(player.name)} 35% 32%)` }}
     >
-      {initials(player.name)}
+      {player.avatar ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={player.avatar} alt="" className="absolute inset-0 h-full w-full rounded-lg object-cover" />
+      ) : (
+        initials(player.name)
+      )}
       {captain && <Crown className="absolute -top-3 left-1/2 h-4 w-4 -translate-x-1/2" />}
       <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-semibold normal-case text-background opacity-0 transition-opacity group-hover:opacity-100">
         {player.name}
         {isMe && " (você)"}
+        {player.bot && " · fictício"}
         {captain && " · Capitão"}
+        {offline && " · offline"}
         {hint && <span className="block text-[10px] font-normal opacity-70">{hint}</span>}
       </span>
     </button>

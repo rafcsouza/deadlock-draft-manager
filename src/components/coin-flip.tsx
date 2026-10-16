@@ -1,33 +1,47 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
+import { COIN_SPIN_MS, type Team } from "@/lib/draft-rules"
 
-type Team = "a" | "b"
 type Side = { name: string; color: string; letter: string }
 
-const SPIN_MS = 1600
-const REVEAL_MS = 1200
+type Props = {
+  sides: Record<Team, Side>
+  // Resultado sorteado pelo servidor (null enquanto ninguém jogou).
+  result: Team | null
+  coinAt: number | null
+  now: number
+  canFlip: boolean
+  onFlip: () => void
+}
 
-// Cara ou coroa para decidir qual time começa o draft.
-export function CoinFlip({ sides, onResult }: { sides: Record<Team, Side>; onResult: (team: Team) => void }) {
+// Cara ou coroa para decidir qual time começa. Quem joga é um capitão; todos veem a mesma moeda.
+export function CoinFlip({ sides, result, coinAt, now, canFlip, onFlip }: Props) {
+  const target = result ? 360 * 5 + (result === "b" ? 180 : 0) : 0
   const [rotation, setRotation] = useState(0)
-  const [result, setResult] = useState<Team | null>(null)
-  const [landed, setLanded] = useState(false)
-  const timers = useRef<number[]>([])
+  const [animate, setAnimate] = useState(true)
+  const [requested, setRequested] = useState(false)
 
-  useEffect(() => () => timers.current.forEach(clearTimeout), [])
+  useEffect(() => {
+    if (!result || coinAt === null) {
+      setRotation(0)
+      setRequested(false)
+      return
+    }
+    // Quem chegou depois do giro só vê a moeda já caída.
+    if (now - coinAt > COIN_SPIN_MS) {
+      setAnimate(false)
+      setRotation(target)
+      return
+    }
+    setAnimate(true)
+    const id = requestAnimationFrame(() => setRotation(target))
+    return () => cancelAnimationFrame(id)
+    // coinAt identifica cada jogada da moeda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, coinAt])
 
-  function flip() {
-    if (result) return
-    const winner: Team = Math.random() < 0.5 ? "a" : "b"
-    setResult(winner)
-    // 5 voltas completas; meia volta a mais deixa a face do time B para cima.
-    setRotation(360 * 5 + (winner === "b" ? 180 : 0))
-    timers.current.push(
-      window.setTimeout(() => setLanded(true), SPIN_MS),
-      window.setTimeout(() => onResult(winner), SPIN_MS + REVEAL_MS),
-    )
-  }
+  const landed = result !== null && coinAt !== null && now >= coinAt + COIN_SPIN_MS
 
   return (
     <div className="flex items-center gap-4">
@@ -37,7 +51,7 @@ export function CoinFlip({ sides, onResult }: { sides: Record<Team, Side>; onRes
           style={{
             transformStyle: "preserve-3d",
             transform: `rotateY(${rotation}deg)`,
-            transition: `transform ${SPIN_MS}ms cubic-bezier(0.2, 0.7, 0.2, 1)`,
+            transition: animate ? `transform ${COIN_SPIN_MS}ms cubic-bezier(0.2, 0.7, 0.2, 1)` : "none",
           }}
         >
           <Face side={sides.a} />
@@ -49,14 +63,23 @@ export function CoinFlip({ sides, onResult }: { sides: Record<Team, Side>; onRes
         <span className="font-display text-lg font-bold uppercase tracking-wider">
           <span style={{ color: sides[result].color }}>{sides[result].name}</span> começa!
         </span>
-      ) : (
+      ) : result ? (
+        <span className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Girando...</span>
+      ) : canFlip ? (
         <button
-          onClick={flip}
-          disabled={result !== null}
+          onClick={() => {
+            setRequested(true)
+            onFlip()
+            // Libera de novo se o servidor recusar (ex.: um capitão saiu do time).
+            window.setTimeout(() => setRequested(false), 3000)
+          }}
+          disabled={requested}
           className="rounded-full border border-border bg-muted px-5 py-2 font-display text-sm font-bold uppercase tracking-wider transition-colors hover:border-muted-foreground disabled:opacity-60"
         >
-          {result ? "Girando..." : "Jogar a moeda"}
+          Jogar a moeda
         </button>
+      ) : (
+        <span className="text-sm text-muted-foreground">Aguardando um capitão jogar a moeda</span>
       )}
     </div>
   )

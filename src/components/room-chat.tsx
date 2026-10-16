@@ -1,33 +1,38 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import type { Player } from "@/components/player-avatar"
+import type { ChatMessage } from "@/lib/draft-rules"
 
-type Team = "a" | "b"
 type Channel = "geral" | "time"
-type Message = { id: string; channel: "geral" | Team; author: string; text: string }
 
-// Chat da sala com abas de chat geral e chat do time.
-// Por enquanto as mensagens ficam só neste navegador.
-export function RoomChat({ me, myTeam }: { me: Player | null; myTeam: Team | null }) {
+// Chat da sala com abas de chat geral e chat do time; as mensagens vêm do servidor.
+export function RoomChat({
+  messages,
+  meId,
+  inTeam,
+  onSend,
+}: {
+  messages: Record<Channel, ChatMessage[]>
+  meId: string
+  inTeam: boolean
+  onSend: (channel: Channel, text: string) => void
+}) {
   const [channel, setChannel] = useState<Channel>("geral")
-  const [messages, setMessages] = useState<Message[]>([])
   const [text, setText] = useState("")
   const listRef = useRef<HTMLUListElement>(null)
 
-  const key = channel === "geral" ? "geral" : myTeam
-  const visible = messages.filter((m) => m.channel === key)
-  const canSend = me !== null && key !== null
+  const visible = messages[channel]
+  const canSend = channel === "geral" || inTeam
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [visible.length])
+  }, [visible.length, channel])
 
   function send(e: React.FormEvent) {
     e.preventDefault()
     const body = text.trim()
-    if (!body || !me || !key) return
-    setMessages([...messages, { id: crypto.randomUUID(), channel: key, author: me.name, text: body }])
+    if (!body || !canSend) return
+    onSend(channel, body)
     setText("")
   }
 
@@ -36,13 +41,15 @@ export function RoomChat({ me, myTeam }: { me: Player | null; myTeam: Team | nul
       <ul ref={listRef} className="min-h-0 flex-1 space-y-1.5 overflow-y-auto px-4 py-3 text-sm">
         {visible.map((m) => (
           <li key={m.id} className="break-words leading-snug">
-            <span className="font-semibold text-foreground">{m.author}: </span>
+            <span className={`font-semibold ${m.authorId === meId ? "text-foreground" : "text-foreground/80"}`}>
+              {m.author}:{" "}
+            </span>
             <span className="text-muted-foreground">{m.text}</span>
           </li>
         ))}
         {visible.length === 0 && (
           <li className="pt-4 text-center text-xs text-muted-foreground">
-            {key === null ? "Entre em um time para usar o chat do time." : "Nenhuma mensagem ainda."}
+            {canSend ? "Nenhuma mensagem ainda." : "Entre em um time para usar o chat do time."}
           </li>
         )}
       </ul>

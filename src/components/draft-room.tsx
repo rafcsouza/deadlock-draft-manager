@@ -1,65 +1,62 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { CoinFlip } from "@/components/coin-flip"
 import { Logo } from "@/components/logo"
-import { EmptySlot, PlayerAvatar, type Player } from "@/components/player-avatar"
+import { MatchResultPanel } from "@/components/match-result"
+import { EmptySlot, PlayerAvatar } from "@/components/player-avatar"
 import { RoomChat } from "@/components/room-chat"
+import {
+  buildSteps,
+  COIN_TOTAL_MS,
+  slotsFor,
+  TEAM_NAMES,
+  TEAM_SIZE,
+  TOTAL_STEPS,
+  TURN_MAX,
+  TURN_MIN,
+  TURN_STEP,
+  type PlayerView,
+  type RoomView,
+  type Step,
+  type Team,
+} from "@/lib/draft-rules"
 import type { Hero } from "@/lib/heroes"
 import { useFitGrid } from "@/lib/use-fit-grid"
-
-type Team = "a" | "b"
-type Step = { team: Team; action: "ban" | "pick" }
+import { useRoom, useServerClock } from "@/lib/use-room"
 
 const TEAMS: Record<Team, { name: string; color: string }> = {
-  a: { name: "Hidden King", color: "var(--team-a)" },
-  b: { name: "Archmother", color: "var(--team-b)" },
+  a: { name: TEAM_NAMES.a, color: "var(--team-a)" },
+  b: { name: TEAM_NAMES.b, color: "var(--team-b)" },
 }
 
-const TEAM_SIZE = 6
 const HERO_GAP = 6
-// Tempo por turno (pick ou ban), em segundos.
-const TURN_MIN = 30
-const TURN_MAX = 180
-
-// Formato padrão: "a#" = ban do time A, "b2" = 2 picks do time B, etc.
-const ORDER = "a#-b#-a1-b2-a2-b1-b#-a#-b1-a2-b2-a1"
-
-const STEPS: Step[] = ORDER.split("-").flatMap((turn): Step[] => {
-  const team = turn[0] as Team
-  if (turn[1] === "#") return [{ team, action: "ban" }]
-  return Array.from({ length: Number(turn.slice(1)) }, () => ({ team, action: "pick" }))
-})
-
-const slotsFor = (team: Team, action: Step["action"]) =>
-  STEPS.filter((s) => s.team === team && s.action === action).length
-
-const randomName = () => `Jogador ${Math.floor(1000 + Math.random() * 9000)}`
 
 // Sala de draft: 1) sala de espera + chat, 2) heróis, 3) times (o primeiro
 // jogador de cada time é o capitão), 4) bans de cada time, 5) de quem é a vez.
-// Por enquanto o estado vive só neste navegador; a sincronização em tempo
-// real entre jogadores ainda será feita.
-export function DraftRoom({ heroes }: { heroes: Hero[] }) {
-  const [me, setMe] = useState<Player | null>(null)
-  const [lobby, setLobby] = useState<Player[]>([])
-  const [teams, setTeams] = useState<Record<Team, Player[]>>({ a: [], b: [] })
+// O estado vem do servidor em tempo real; aqui só mostramos e enviamos ações.
+export function DraftRoom({ code, heroes, meId }: { code: string; heroes: Hero[]; meId: string }) {
+  const room = useRoom(code)
+  if (!room.view) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Conectando à sala...
+      </main>
+    )
+  }
+  return <RoomScreen {...room} view={room.view} heroes={heroes} meId={meId} />
+}
+
+type RoomScreenProps = Omit<ReturnType<typeof useRoom>, "view"> & { view: RoomView; heroes: Hero[]; meId: string }
+
+// Separado do DraftRoom para os hooks (ex.: medir a grade de heróis) rodarem só com a sala já carregada.
+function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: RoomScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
-  const [actions, setActions] = useState<Hero[]>([])
-  const [first, setFirst] = useState<Team | null>(null)
-  const [turnSeconds, setTurnSeconds] = useState(TURN_MIN)
-  const [remaining, setRemaining] = useState(TURN_MIN)
   const { ref: heroArea, grid: heroGrid } = useFitGrid<HTMLDivElement>(heroes.length, 3 / 4, HERO_GAP)
+  const heroById = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes])
 
-  // Gerado no cliente para não divergir da renderização do servidor.
-  useEffect(() => {
-    const player = { id: "me", name: randomName() }
-    setMe(player)
-    setLobby([player])
-  }, [])
-
-  // Pré-carrega os retratos de ban e pick para a troca ser instantânea no clique.
+  // Pré-carrega os retratos de ban e pick para a troca ser instantânea.
   useEffect(() => {
     for (const h of heroes) {
       new Image().src = h.critical
@@ -67,71 +64,42 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
     }
   }, [heroes])
 
-  // Ordem do draft a partir do time que venceu o cara ou coroa (ORDER assume o time A começando).
-  const steps = useMemo(
-    () => (first === "b" ? STEPS.map((s) => ({ ...s, team: s.team === "a" ? ("b" as const) : ("a" as const) })) : STEPS),
-    [first],
-  )
+  const now = useServerClock(serverNow, Boolean(view.deadline || view.coinAt))
 
+  const teams = view.teams
+  const actions = view.actions
+  const steps = buildSteps(view.first)
   const hasCaptains = teams.a.length > 0 && teams.b.length > 0
-  // Depois do cara ou coroa os times ficam travados.
-  const started = first !== null
-  const finished = actions.length === steps.length
-  const current = started && !finished ? steps[actions.length] : null
-  const myTeam = (["a", "b"] as const).find((t) => teams[t].some((p) => p.id === me?.id)) ?? null
+  const started = Boolean(view.first)
+  const finished = actions.length === TOTAL_STEPS
+  const coinPhase = view.coinAt !== null && now < view.coinAt + COIN_TOTAL_MS
+  const current = started && !finished && !coinPhase ? steps[actions.length] : null
+  const remaining = view.deadline ? Math.ceil((view.deadline - now) / 1000) : 0
 
-  const chosen = (team: Team, action: Step["action"]) =>
-    actions.filter((_, i) => steps[i].team === team && steps[i].action === action)
+  const myTeam = (["a", "b"] as const).find((t) => teams[t].some((p) => p.id === meId)) ?? null
+  const captainTeam = (["a", "b"] as const).find((t) => teams[t][0]?.id === meId) ?? null
+  const isHost = view.hostId === meId
+  // Quem joga pelo time: o capitão, ou o anfitrião quando o capitão é um jogador fictício.
+  const actsFor = (team: Team) => {
+    const captain = teams[team][0]
+    return Boolean(captain && (captain.id === meId || (isHost && captain.bot)))
+  }
+  const selectedIsBot = view.lobby.some((p) => p.id === selected && p.bot)
+  const canManage = isHost || captainTeam !== null
+
+  const heroesOf = (team: Team, action: Step["action"]) =>
+    actions
+      .filter((_, i) => steps[i].team === team && steps[i].action === action)
+      .map((id) => heroById.get(id))
+      .filter((h): h is Hero => Boolean(h))
   const statusOf = (hero: Hero) => {
-    const i = actions.findIndex((h) => h.id === hero.id)
+    const i = actions.indexOf(hero.id)
     return i === -1 ? null : steps[i]
   }
 
-  function choose(hero: Hero) {
-    if (!current || statusOf(hero)) return
-    setActions([...actions, hero])
-  }
-
-  // Timer do turno: reinicia a cada ação; ao zerar, escolhe um herói aleatório pelo time.
-  const turnKey = current ? actions.length : -1
-  useEffect(() => {
-    if (turnKey < 0) return
-    setRemaining(turnSeconds)
-    const id = window.setInterval(() => setRemaining((r) => r - 1), 1000)
-    return () => window.clearInterval(id)
-  }, [turnKey, turnSeconds])
-
-  useEffect(() => {
-    if (!current || remaining > 0) return
-    const available = heroes.filter((h) => !statusOf(h))
-    if (available.length > 0) choose(available[Math.floor(Math.random() * available.length)])
-    // Só reage ao tempo zerando; as demais dependências são lidas no momento.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining])
-
-  // Mantém os times e volta para o cara ou coroa.
-  function restart() {
-    setActions([])
-    setFirst(null)
-  }
-
-  // Move um jogador entre a sala de espera e os times.
-  function move(playerId: string | null, to: Team | "lobby") {
-    if (started || !playerId) return
-    const player = [...lobby, ...teams.a, ...teams.b].find((p) => p.id === playerId)
-    if (!player) return
-    if (to !== "lobby" && (teams[to].length >= TEAM_SIZE || teams[to].includes(player))) return
-
-    const without = (list: Player[]) => list.filter((p) => p.id !== playerId)
-    const next = { a: without(teams.a), b: without(teams.b) }
-    if (to === "lobby") {
-      setLobby([...without(lobby), player])
-    } else {
-      next[to] = [...next[to], player]
-      setLobby(without(lobby))
-    }
-    setTeams(next)
+  const move = (playerId: string | null | undefined, to: Team | "lobby") => {
     setSelected(null)
+    if (playerId && !started) send({ type: "move", playerId, to })
   }
 
   return (
@@ -144,7 +112,7 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
           </Link>
           <h2 className="font-display text-sm font-bold uppercase tracking-wider">Sala de espera</h2>
           <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {lobby.length}
+            {view.lobby.length}
           </span>
           <CopyLinkButton />
         </div>
@@ -158,35 +126,49 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
           className="flex min-h-40 flex-col lg:min-h-0 lg:flex-1 lg:basis-0"
         >
           <div className="flex flex-1 flex-wrap content-start gap-2 overflow-y-auto p-4 pb-10">
-            {lobby.map((p) => (
-              <PlayerAvatar
-                key={p.id}
-                player={p}
-                isMe={p.id === me?.id}
-                selected={selected === p.id}
-                draggable={!started}
-                onClick={() => !started && setSelected(selected === p.id ? null : p.id)}
-              />
-            ))}
-            {/* Provisório: simula outros jogadores enquanto a sala não é em tempo real. */}
-            {!started && (
+            {view.lobby.map((p) => {
+              // Você pode se arrastar; capitães podem arrastar qualquer um da sala de espera.
+              // Anfitrião também move os jogadores fictícios.
+              const movable = !started && (p.id === meId || captainTeam !== null || (isHost && p.bot))
+              return (
+                <PlayerAvatar
+                  key={p.id}
+                  player={p}
+                  isMe={p.id === meId}
+                  selected={selected === p.id}
+                  draggable={movable}
+                  onClick={() => movable && setSelected(selected === p.id ? null : p.id)}
+                />
+              )
+            })}
+            {/* Jogadores fictícios para testes (só o anfitrião adiciona). */}
+            {isHost && !started && (
               <button
-                onClick={() => setLobby([...lobby, { id: crypto.randomUUID(), name: randomName() }])}
-                title="Adicionar jogador de teste"
-                aria-label="Adicionar jogador de teste"
-                className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-border text-lg text-muted-foreground hover:text-foreground"
+                onClick={() => send({ type: "addBot" })}
+                title="Adicionar jogador fictício"
+                aria-label="Adicionar jogador fictício"
+                className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-border text-lg text-muted-foreground hover:border-foreground hover:text-foreground"
               >
                 +
               </button>
             )}
+            {view.lobby.length === 0 && !isHost && (
+              <p className="w-full pt-4 text-center text-xs text-muted-foreground">Ninguém aguardando.</p>
+            )}
           </div>
           <p className="px-4 pb-3 text-[11px] leading-snug text-muted-foreground">
-            Clique no + de um time para entrar, ou arraste jogadores até ele. O primeiro de cada time é o capitão.
+            Clique no + de um time para entrar. O primeiro de cada time é o capitão e pode puxar jogadores para o time.
+            {isHost && " Como anfitrião, use o + aqui para criar jogadores fictícios e testar."}
           </p>
         </div>
 
         <div className="flex h-80 flex-col border-t border-border lg:h-auto lg:min-h-0 lg:flex-1 lg:basis-0">
-          <RoomChat me={me} myTeam={myTeam} />
+          <RoomChat
+            messages={view.chat}
+            meId={meId}
+            inTeam={myTeam !== null}
+            onSend={(channel, text) => send({ type: "chat", channel, text })}
+          />
         </div>
       </aside>
 
@@ -195,16 +177,18 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
           {(["a", "b"] as const).map((team) => (
             <div key={team} className="space-y-2">
               {/* 4. Bans do time */}
-              <BanStrip team={team} bans={chosen(team, "ban")} />
+              <BanStrip team={team} bans={heroesOf(team, "ban")} />
               {/* 3. Time, com o capitão no primeiro quadrado */}
               <TeamCard
                 team={team}
                 players={teams[team]}
-                meId={me?.id}
-                picks={chosen(team, "pick")}
+                meId={meId}
+                isCaptain={captainTeam === team}
+                isHost={isHost}
+                picks={heroesOf(team, "pick")}
                 active={current?.team === team}
                 locked={started}
-                canAssign={selected !== null}
+                canAssign={selected !== null && (captainTeam === team || (isHost && selectedIsBot))}
                 onAdd={(playerId) => move(playerId ?? selected, team)}
                 onRemove={(playerId) => move(playerId, "lobby")}
               />
@@ -213,18 +197,29 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
         </div>
 
         {/* 2. Heróis */}
-        <section className="flex h-[75svh] min-h-0 flex-col rounded-2xl border border-border bg-card/80 lg:h-auto lg:flex-1">
+        <section className="relative flex h-[75svh] min-h-0 flex-col rounded-2xl border border-border bg-card/80 lg:h-auto lg:flex-1">
           {/* 5. De quem é a vez */}
           <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-border px-14">
             <TimerSettings
-              value={turnSeconds}
-              onChange={setTurnSeconds}
-              locked={actions.length > 0}
+              value={view.turnSeconds}
+              onChange={(seconds) => send({ type: "turnSeconds", seconds })}
+              locked={!canManage || actions.length > 0}
+              reason={
+                actions.length > 0
+                  ? "O draft já começou; o tempo não pode mais ser alterado."
+                  : !canManage
+                    ? "Só o anfitrião da sala ou os capitães podem mudar o tempo."
+                    : "Vale para cada pick e ban. Só pode ser alterado antes da primeira escolha."
+              }
             />
-            {hasCaptains && !started ? (
+            {hasCaptains && (!started || coinPhase) ? (
               <CoinFlip
                 sides={{ a: { ...TEAMS.a, letter: "H" }, b: { ...TEAMS.b, letter: "A" } }}
-                onResult={setFirst}
+                result={view.first}
+                coinAt={view.coinAt}
+                now={now}
+                canFlip={actsFor("a") || actsFor("b")}
+                onFlip={() => send({ type: "flip" })}
               />
             ) : (
               <TurnBanner
@@ -233,7 +228,9 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
                 finished={finished}
                 actions={actions.length}
                 remaining={remaining}
-                onRestart={restart}
+                myTurn={current !== null && actsFor(current.team)}
+                canRestart={canManage}
+                onRestart={() => send({ type: "restart" })}
               />
             )}
           </div>
@@ -249,11 +246,11 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
             >
               {heroes.map((h) => {
                 const status = statusOf(h)
-                const clickable = current !== null && status === null
+                const clickable = current !== null && actsFor(current.team) && status === null
                 return (
                   <button
                     key={h.id}
-                    onClick={() => choose(h)}
+                    onClick={() => clickable && send({ type: "choose", heroId: h.id })}
                     disabled={!clickable}
                     title={h.name}
                     // Disponível: sem cor; ao passar o mouse, cresce em relevo e ganha a cor do herói.
@@ -303,7 +300,34 @@ export function DraftRoom({ heroes }: { heroes: Hero[] }) {
               )}
             </div>
           </div>
+          {/* Depois do draft: informar o ID da partida e confirmar os stats (por cima da grade). */}
+          {finished && (
+            <div className="absolute inset-x-0 bottom-0 top-16 z-20 rounded-b-2xl bg-card/95 p-4 backdrop-blur">
+              <MatchResultPanel
+                result={view.result}
+                fetching={view.fetchingResult}
+                savedDraftId={view.savedDraftId}
+                canManage={canManage}
+                heroes={heroById}
+                send={send}
+              />
+            </div>
+          )}
         </section>
+      </div>
+
+      {/* Avisos: erro de uma ação e conexão caída. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex flex-col items-center gap-2 px-4">
+        {!connected && (
+          <span className="rounded-lg border border-yellow-600/50 bg-card px-4 py-2 text-sm text-yellow-300 shadow-xl">
+            Reconectando à sala...
+          </span>
+        )}
+        {error && (
+          <span role="alert" className="rounded-lg border border-red-600/50 bg-card px-4 py-2 text-sm text-red-300 shadow-xl">
+            {error}
+          </span>
+        )}
       </div>
     </main>
   )
@@ -315,6 +339,8 @@ function TurnBanner({
   finished,
   actions,
   remaining,
+  myTurn,
+  canRestart,
   onRestart,
 }: {
   steps: Step[]
@@ -322,18 +348,22 @@ function TurnBanner({
   finished: boolean
   actions: number
   remaining: number
+  myTurn: boolean
+  canRestart: boolean
   onRestart: () => void
 }) {
   if (finished) {
     return (
       <div className="flex items-center gap-4">
         <span className="font-display text-lg font-bold uppercase tracking-wider">Draft finalizado</span>
-        <button
-          onClick={onRestart}
-          className="rounded-full border border-border bg-muted px-5 py-2 font-display text-sm font-bold uppercase tracking-wider transition-colors hover:border-muted-foreground"
-        >
-          Reiniciar draft
-        </button>
+        {canRestart && (
+          <button
+            onClick={onRestart}
+            className="rounded-full border border-border bg-muted px-5 py-2 font-display text-sm font-bold uppercase tracking-wider transition-colors hover:border-muted-foreground"
+          >
+            Reiniciar draft
+          </button>
+        )}
       </div>
     )
   }
@@ -359,7 +389,8 @@ function TurnBanner({
         className="rounded-full border px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider"
         style={{ borderColor: color, color }}
       >
-        {name} <span className="text-foreground">{verb}</span>
+        {myTurn ? "Sua vez: " : `${name} `}
+        <span className="text-foreground">{verb}</span>
       </span>
       <span
         className={`w-14 rounded-full border px-2 py-1.5 text-center font-mono text-sm font-bold tabular-nums ${
@@ -377,12 +408,24 @@ function TimerSettings({
   value,
   onChange,
   locked,
+  reason,
 }: {
   value: number
   onChange: (seconds: number) => void
   locked: boolean
+  reason: string
 }) {
   const [open, setOpen] = useState(false)
+  // Valor local enquanto arrasta; envia ao servidor só quando o slider para.
+  const [draft, setDraft] = useState(value)
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+  useEffect(() => setDraft(value), [value])
+  useEffect(() => {
+    if (draft === value || locked) return
+    const id = window.setTimeout(() => onChangeRef.current(draft), 300)
+    return () => window.clearTimeout(id)
+  }, [draft, value, locked])
 
   return (
     // Sem transform aqui: ele prenderia o menu atrás dos cards e limitaria o fundo "fixed" de fechar.
@@ -407,28 +450,24 @@ function TimerSettings({
               <label htmlFor="turn-time" className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                 Tempo por turno
               </label>
-              <span className="font-mono text-sm font-bold tabular-nums">{value}s</span>
+              <span className="font-mono text-sm font-bold tabular-nums">{draft}s</span>
             </div>
             <input
               id="turn-time"
               type="range"
               min={TURN_MIN}
               max={TURN_MAX}
-              step={5}
-              value={value}
+              step={TURN_STEP}
+              value={draft}
               disabled={locked}
-              onChange={(e) => onChange(Number(e.target.value))}
+              onChange={(e) => setDraft(Number(e.target.value))}
               className="mt-3 w-full cursor-pointer accent-[var(--team-a)] disabled:cursor-not-allowed disabled:opacity-50"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>{TURN_MIN}s</span>
               <span>{TURN_MAX}s</span>
             </div>
-            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-              {locked
-                ? "O draft já começou; o tempo não pode mais ser alterado."
-                : "Vale para cada pick e ban. Só pode ser alterado antes da primeira escolha."}
-            </p>
+            <p className="mt-2 text-[11px] leading-snug text-muted-foreground">{reason}</p>
           </div>
         </>
       )}
@@ -475,6 +514,8 @@ function TeamCard({
   team,
   players,
   meId,
+  isCaptain,
+  isHost,
   picks,
   active,
   locked,
@@ -483,8 +524,10 @@ function TeamCard({
   onRemove,
 }: {
   team: Team
-  players: Player[]
-  meId?: string
+  players: PlayerView[]
+  meId: string
+  isCaptain: boolean
+  isHost: boolean
   picks: Hero[]
   active: boolean
   locked: boolean
@@ -528,26 +571,34 @@ function TeamCard({
         </span>
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
-        {Array.from({ length: TEAM_SIZE }, (_, i) =>
-          players[i] ? (
+        {Array.from({ length: TEAM_SIZE }, (_, i) => {
+          const p = players[i]
+          if (!p) {
+            return (
+              <EmptySlot
+                // Prefixos evitam colisão entre a posição do quadrado vazio e o ID de um jogador (ex.: "1").
+                key={`vazio-${i}`}
+                captain={i === 0}
+                // Só o próximo quadrado livre recebe o "+", e só se você ainda não está neste time.
+                onJoin={!locked && i === players.length && !players.some((x) => x.id === meId) ? () => onAdd(meId) : undefined}
+              />
+            )
+          }
+          // Você pode sair do time; o capitão pode tirar qualquer um do time dele; o anfitrião move os fictícios.
+          const removable = !locked && (p.id === meId || isCaptain || (isHost && p.bot))
+          return (
             <PlayerAvatar
-              key={players[i].id}
-              player={players[i]}
-              isMe={players[i].id === meId}
+              key={`jogador-${p.id}`}
+              player={p}
+              isMe={p.id === meId}
               captain={i === 0}
-              draggable={!locked}
-              onClick={() => !locked && onRemove(players[i].id)}
-              hint={locked ? undefined : "Clique para devolver à sala de espera"}
+              offline={!p.online}
+              draggable={removable}
+              onClick={() => removable && onRemove(p.id)}
+              hint={removable ? (p.id === meId ? "Clique para sair do time" : "Clique para devolver à sala de espera") : undefined}
             />
-          ) : (
-            <EmptySlot
-              key={i}
-              captain={i === 0}
-              // Só o próximo quadrado livre recebe o "+", e só se você ainda não está neste time.
-              onJoin={!locked && meId && i === players.length && !players.some((p) => p.id === meId) ? () => onAdd(meId) : undefined}
-            />
-          ),
-        )}
+          )
+        })}
       </div>
       {/* Sempre visível (mesmo vazia) para o layout não mudar de altura quando o draft começa. */}
       <div className="mt-3 flex flex-wrap gap-1.5">
