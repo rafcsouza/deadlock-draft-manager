@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { startTransition, useActionState, useState } from "react"
-import { recoverPassword, signIn, signUp, type FormState } from "@/app/auth-actions"
+import { recoverPassword, signIn, signInAsGuest, signUp, type FormState } from "@/app/auth-actions"
 import { AvatarPicker } from "@/components/avatar-picker"
 import { SECURITY_QUESTIONS } from "@/lib/security-questions"
 
@@ -97,10 +97,9 @@ export function SignUpForm({ next }: { next: string }) {
           className={inputClass}
         />
       </Field>
-      <Field label="SteamID64">
+      <Field label="SteamID64 (opcional)">
         <input
           name="steamId"
-          required
           inputMode="numeric"
           autoComplete="off"
           placeholder="7656119xxxxxxxxxx"
@@ -108,7 +107,7 @@ export function SignUpForm({ next }: { next: string }) {
         />
       </Field>
       <p className="-mt-2 text-left text-[11px] leading-snug text-muted-foreground">
-        Usado para ligar você aos stats das partidas. Ache o seu em{" "}
+        Se preencher, seu perfil aparece com seu nome no leaderboard e nas partidas. Ache o seu em{" "}
         <a href="https://steamid.io" target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
           steamid.io
         </a>{" "}
@@ -190,6 +189,38 @@ export function RecoverForm() {
       <Link href="/entrar" className="inline-block text-xs text-muted-foreground hover:text-foreground">
         ← Voltar para o login
       </Link>
+    </form>
+  )
+}
+
+// Entrar sem conta: só um apelido opcional.
+export function GuestForm({ next }: { next: string }) {
+  const { state, onSubmit, pending } = useFormAction(signInAsGuest)
+  return (
+    <form onSubmit={onSubmit} className="w-full space-y-3 border-t border-border pt-5">
+      <input type="hidden" name="next" value={next} />
+      <p className="text-left text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Sem conta?</p>
+      <div className="flex gap-2">
+        <input
+          name="nickname"
+          maxLength={14}
+          placeholder="Apelido (opcional)"
+          aria-label="Apelido"
+          autoComplete="off"
+          className={inputClass}
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="shrink-0 rounded-lg border border-border bg-muted/60 px-4 text-sm font-semibold transition-colors hover:border-muted-foreground disabled:opacity-60"
+        >
+          {pending ? "Entrando..." : "Entrar como visitante"}
+        </button>
+      </div>
+      <p className="text-left text-[11px] leading-snug text-muted-foreground">
+        Dá para criar e entrar em salas de draft e ver o histórico e o leaderboard. O acesso de visitante dura 7 dias.
+      </p>
+      <ErrorMessage state={state} />
     </form>
   )
 }

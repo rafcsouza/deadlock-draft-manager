@@ -3,25 +3,66 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { RoomAction, RoomView } from "@/lib/draft-rules"
 
+const SSE_TIMEOUT_MS = 4000
+const POLL_MS = 1000
+
 // Conecta ao canal ao vivo da sala e expõe o estado, o relógio do servidor e o envio de ações.
+// Se a conexão ao vivo não entregar nada em alguns segundos (ex.: túnel rápido do Cloudflare, que não
+// suporta esse tipo de conexão), passa a perguntar o estado ao servidor a cada segundo.
 export function useRoom(code: string) {
   const [view, setView] = useState<RoomView | null>(null)
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Diferença entre o relógio do servidor e o deste navegador, para o timer bater com o de todos.
   const offset = useRef(0)
+  // Quando em modo de consulta, permite buscar o estado logo depois de uma ação.
+  const pollNow = useRef<(() => void) | null>(null)
 
   useEffect(() => {
-    const source = new EventSource(`/api/rooms/${code}/events`)
-    source.onopen = () => setConnected(true)
-    source.onerror = () => setConnected(false) // o EventSource reconecta sozinho
-    source.onmessage = (e) => {
-      const next: RoomView = JSON.parse(e.data)
+    let stopped = false
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
+    let gotMessage = false
+
+    const apply = (next: RoomView) => {
       offset.current = next.serverNow - Date.now()
       setView(next)
       setConnected(true)
     }
-    return () => source.close()
+
+    const source = new EventSource(`/api/rooms/${code}/events`)
+    source.onerror = () => setConnected(false) // o EventSource reconecta sozinho
+    source.onmessage = (e) => {
+      gotMessage = true
+      apply(JSON.parse(e.data))
+    }
+
+    async function poll() {
+      if (stopped) return
+      clearTimeout(pollTimer)
+      try {
+        const res = await fetch(`/api/rooms/${code}`, { cache: "no-store" })
+        if (res.ok) apply(await res.json())
+        else setConnected(false)
+      } catch {
+        setConnected(false)
+      }
+      if (!stopped) pollTimer = setTimeout(poll, POLL_MS)
+    }
+
+    const fallback = setTimeout(() => {
+      if (gotMessage || stopped) return
+      source.close()
+      pollNow.current = () => void poll()
+      void poll()
+    }, SSE_TIMEOUT_MS)
+
+    return () => {
+      stopped = true
+      clearTimeout(fallback)
+      clearTimeout(pollTimer)
+      pollNow.current = null
+      source.close()
+    }
   }, [code])
 
   const send = useCallback(
@@ -36,6 +77,8 @@ export function useRoom(code: string) {
       } catch {
         setError("Sem conexão com o servidor.")
       }
+      // Em modo de consulta, mostra o resultado da ação na hora, sem esperar a próxima consulta.
+      pollNow.current?.()
     },
     [code],
   )

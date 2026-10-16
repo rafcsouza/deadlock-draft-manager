@@ -16,8 +16,8 @@ const SCHEMA = `
     security_question TEXT NOT NULL,
     security_answer_hash TEXT NOT NULL,
     avatar TEXT,
-    -- account_id da Steam (SteamID3, 32 bits): é como a API do Deadlock identifica o jogador.
-    steam_account_id INTEGER NOT NULL UNIQUE,
+    -- account_id da Steam (SteamID3, 32 bits), opcional: liga o perfil aos stats das partidas.
+    steam_account_id INTEGER UNIQUE,
     created_at INTEGER NOT NULL
   );
 
@@ -48,6 +48,18 @@ const SCHEMA = `
     stats TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS drafts_played_at ON drafts (played_at DESC);
+
+  -- Jogadores com mais de uma conta Steam: todas as contas de um grupo contam como a principal.
+  CREATE TABLE IF NOT EXISTS account_links (
+    account_id INTEGER PRIMARY KEY,
+    main_account_id INTEGER NOT NULL
+  );
+
+  -- Nome fixo de um jogador no leaderboard (no lugar do nome atual da Steam).
+  CREATE TABLE IF NOT EXISTS player_names (
+    account_id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL
+  );
 `
 
 function open() {
@@ -62,3 +74,8 @@ const globalForDb = globalThis as unknown as { db?: DatabaseSync }
 export const db = globalForDb.db ?? open()
 if (process.env.NODE_ENV !== "production") globalForDb.db = db
 db.exec(SCHEMA)
+
+// Migrações simples para bancos criados antes de uma coluna existir.
+const userColumns = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name)
+// Visitantes: contas temporárias, sem senha, apagadas quando a sessão expira.
+if (!userColumns.includes("is_guest")) db.exec("ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0")

@@ -7,7 +7,9 @@ export const metadata = { title: "Criar perfil" }
 
 export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const next = safeNext((await searchParams).next)
-  if (await getCurrentUser()) redirect(next)
+  // Visitante pode abrir esta página para criar uma conta de verdade.
+  const user = await getCurrentUser()
+  if (user && !user.isGuest) redirect(next)
 
   return (
     <ThemedCard>

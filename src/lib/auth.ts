@@ -10,8 +10,9 @@ const scryptAsync = promisify(scrypt) as (secret: string, salt: string, keylen: 
 
 const SESSION_COOKIE = "session"
 const SESSION_DAYS = 30
+const GUEST_SESSION_DAYS = 7
 
-export type User = { id: number; username: string; avatar: string | null }
+export type User = { id: number; username: string; avatar: string | null; isGuest: boolean }
 
 // ---------- Hash de senha e resposta de segurança ----------
 
@@ -75,9 +76,16 @@ export function clearFailures(key: string) {
 
 // ---------- Sessão ----------
 
-export async function createSession(userId: number) {
+export async function createSession(userId: number, days = SESSION_DAYS) {
+  // Visitante que entrou numa conta de verdade: a conta temporária dele não serve mais.
+  const previous = (await cookies()).get(SESSION_COOKIE)?.value
+  if (previous) {
+    db.prepare(
+      "DELETE FROM users WHERE is_guest = 1 AND id != ? AND id IN (SELECT user_id FROM sessions WHERE token = ?)",
+    ).run(userId, previous)
+  }
   const token = randomBytes(32).toString("hex")
-  const expiresAt = Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000
+  const expiresAt = Date.now() + days * 24 * 60 * 60 * 1000
   db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)").run(token, userId, expiresAt)
   const store = await cookies()
   store.set(SESSION_COOKIE, token, {
@@ -92,7 +100,11 @@ export async function createSession(userId: number) {
 export async function destroySession() {
   const store = await cookies()
   const token = store.get(SESSION_COOKIE)?.value
-  if (token) db.prepare("DELETE FROM sessions WHERE token = ?").run(token)
+  if (token) {
+    // Visitante saindo: a conta temporária vai junto (as sessões dela caem em cascata).
+    db.prepare("DELETE FROM users WHERE is_guest = 1 AND id IN (SELECT user_id FROM sessions WHERE token = ?)").run(token)
+    db.prepare("DELETE FROM sessions WHERE token = ?").run(token)
+  }
   store.delete(SESSION_COOKIE)
 }
 
@@ -102,12 +114,14 @@ export const getCurrentUser = cache(async (): Promise<User | null> => {
   if (!token) return null
   const row = db
     .prepare(
-      `SELECT u.id, u.username, u.avatar FROM sessions s
+      `SELECT u.id, u.username, u.avatar, u.is_guest FROM sessions s
        JOIN users u ON u.id = s.user_id
        WHERE s.token = ? AND s.expires_at > ?`,
     )
-    .get(token, Date.now()) as User | undefined
-  return row ?? null
+    .get(token, Date.now()) as (Omit<User, "isGuest"> & { is_guest: number }) | undefined
+  if (!row) return null
+  const { is_guest, ...user } = row
+  return { ...user, isGuest: is_guest === 1 }
 })
 
 // Para páginas que exigem login: manda para /entrar e volta depois.
@@ -115,6 +129,33 @@ export async function requireUser(returnTo: string) {
   const user = await getCurrentUser()
   if (!user) redirect(`/entrar?next=${encodeURIComponent(returnTo)}`)
   return user
+}
+
+// ---------- Visitantes ----------
+
+// Apaga visitantes sem nenhuma sessão válida (a sessão de visitante dura 7 dias).
+function removeExpiredGuests() {
+  db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now())
+  db.prepare("DELETE FROM users WHERE is_guest = 1 AND id NOT IN (SELECT user_id FROM sessions)").run()
+}
+
+// Cria uma conta temporária de visitante e entra com ela. O apelido ganha um número se já estiver em uso.
+export async function createGuest(nickname: string) {
+  removeExpiredGuests()
+  const base = (nickname.replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 14) || "Visitante").padEnd(3, "_")
+  let username = base
+  for (let i = 0; db.prepare("SELECT 1 FROM users WHERE username = ?").get(username); i++) {
+    username = `${base}-${Math.floor(1000 + Math.random() * 9000)}`
+    if (i > 20) throw new Error("Não foi possível criar o visitante. Tente outro apelido.")
+  }
+  const result = db
+    .prepare(
+      `INSERT INTO users (username, password_hash, security_question, security_answer_hash, avatar, steam_account_id, created_at, is_guest)
+       VALUES (?, ?, ?, ?, NULL, NULL, ?, 1)`,
+    )
+    // Sem senha utilizável: o hash é de um valor aleatório que ninguém conhece.
+    .run(username, await hashSecret(randomBytes(32).toString("hex")), "-", "-", Date.now())
+  await createSession(Number(result.lastInsertRowid), GUEST_SESSION_DAYS)
 }
 
 // Só aceita caminhos internos, para o "next" não virar redirecionamento para outro site.

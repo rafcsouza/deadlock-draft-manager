@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { TEAM_NAMES, type ResultPlayer, type Team } from "@/lib/draft-rules"
 import { formatSouls, playerName } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
@@ -70,7 +71,13 @@ export function Scoreboard({
                     )}
                     <div className="min-w-0">
                       <p className={`flex items-center gap-1.5 truncate font-semibold ${p.userId ? "" : "text-foreground/80"}`}>
-                        {playerName(p)}
+                        {p.accountId > 0 ? (
+                          <Link href={`/jogador/${p.accountId}`} className="hover:underline">
+                            {playerName(p)}
+                          </Link>
+                        ) : (
+                          playerName(p)
+                        )}
                         {p.mvpRank === 1 && <span className="rounded bg-yellow-500/25 px-1 text-[9px] font-black text-yellow-300">MVP</span>}
                         {p.mvpRank === 2 && <span className="rounded bg-zinc-400/20 px-1 text-[9px] font-black text-zinc-300">2º</span>}
                         {p.mvpRank === 3 && <span className="rounded bg-orange-700/25 px-1 text-[9px] font-black text-orange-300">3º</span>}

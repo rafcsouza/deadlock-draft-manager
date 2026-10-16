@@ -4,6 +4,7 @@ import { ImportMatchForm, VerifyMatchForm } from "@/components/import-match-form
 import { Logo } from "@/components/logo"
 import { Scoreboard } from "@/components/scoreboard"
 import { requireUser } from "@/lib/auth"
+import { db } from "@/lib/db"
 import { TEAM_NAMES, type Team } from "@/lib/draft-rules"
 import { listDrafts, type SavedDraft } from "@/lib/drafts"
 import { formatDuration, playerName } from "@/lib/format"
@@ -22,7 +23,21 @@ const dateFormat = new Intl.DateTimeFormat("pt-BR", {
 
 export default async function HistoryPage() {
   const user = await requireUser("/historico")
-  const drafts = listDrafts()
+  // Nome e perfil de cada jogador vêm dos perfis atuais (pelo SteamID), não do que foi gravado na importação.
+  const profiles = new Map(
+    (db.prepare("SELECT id, username, steam_account_id FROM users WHERE steam_account_id IS NOT NULL").all() as {
+      id: number
+      username: string
+      steam_account_id: number
+    }[]).map((u) => [u.steam_account_id, u]),
+  )
+  const drafts = listDrafts().map((d) => ({
+    ...d,
+    stats: d.stats.map((p) => {
+      const u = profiles.get(p.accountId)
+      return { ...p, userId: u ? String(u.id) : null, name: u?.username ?? null }
+    }),
+  }))
   const [heroList, itemList] = await Promise.all([getHeroes(), getItems()])
   const heroes = new Map(heroList.map((h) => [h.id, h]))
   const items = new Map(itemList.map((i) => [i.id, i]))

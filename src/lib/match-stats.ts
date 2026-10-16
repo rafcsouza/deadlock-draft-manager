@@ -2,6 +2,9 @@ import "server-only"
 
 const API = "https://api.deadlock-api.com/v1"
 
+// Modo de jogo na API: 1 = partida padrão 6v6. Outros (ex.: 4 = Street Brawl) não entram no histórico por enquanto.
+const STANDARD_GAME_MODE = 1
+
 // Chave opcional da API do Deadlock (DEADLOCK_API_KEY no .env.local): aumenta o limite de
 // partidas buscadas na Steam (de 3 para 300 por hora) e dá prioridade quando a API está cheia.
 const headers = (): HeadersInit => (process.env.DEADLOCK_API_KEY ? { "X-API-KEY": process.env.DEADLOCK_API_KEY } : {})
@@ -54,7 +57,14 @@ type ApiPlayer = {
 }
 
 type ApiMatch = {
-  match_info?: { match_id: number; winning_team: number; duration_s: number; start_time: number; players: ApiPlayer[] }
+  match_info?: {
+    match_id: number
+    winning_team: number
+    duration_s: number
+    start_time: number
+    game_mode?: number
+    players: ApiPlayer[]
+  }
 }
 
 // Erro de limite (429) ou Steam ocupada (503): traz quanto tempo esperar antes de tentar de novo.
@@ -106,6 +116,9 @@ export async function fetchMatchStats(matchId: number): Promise<MatchStats> {
   const info = data?.match_info
   if (!info?.players?.length) {
     throw new Error("Partida não encontrada. Confira o ID; partidas muito recentes podem levar alguns minutos para aparecer.")
+  }
+  if (info.game_mode !== undefined && info.game_mode !== STANDARD_GAME_MODE) {
+    throw new Error("Essa partida não é do modo padrão 6v6 (ex.: Street Brawl). Por enquanto o histórico aceita só partidas 6v6.")
   }
 
   const names = await fetchSteamNames(info.players.map((p) => p.account_id))

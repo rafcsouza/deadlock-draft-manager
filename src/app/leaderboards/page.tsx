@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { Logo } from "@/components/logo"
 import { requireUser } from "@/lib/auth"
-import { getLeaderboard, RATING } from "@/lib/leaderboard"
+import { getLeaderboard, POINTS } from "@/lib/leaderboard"
 
 export const metadata = { title: "Leaderboards" }
 
@@ -49,15 +49,14 @@ export default async function LeaderboardsPage() {
                       {i + 1}
                     </td>
                     <td>
-                      <span className={r.hasProfile ? "font-semibold" : "text-foreground/80"}>{r.name}</span>
+                      <Link href={`/jogador/${r.accountId}`} className={`hover:underline ${r.hasProfile ? "font-semibold" : "text-foreground/80"}`}>
+                        {r.name}
+                      </Link>
                       {r.hasProfile && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">perfil</span>}
                     </td>
                     <td className="text-right">
                       <span className="font-mono font-bold tabular-nums">{r.rating}</span>
-                      <span className={`ml-1.5 font-mono text-[11px] tabular-nums ${r.lastChange >= 0 ? "text-green-400" : "text-red-400"}`}>
-                        {r.lastChange >= 0 ? "+" : ""}
-                        {r.lastChange}
-                      </span>
+                      <span className="ml-1.5 font-mono text-[11px] tabular-nums text-green-400">+{r.lastChange}</span>
                     </td>
                     <td className="text-center font-mono tabular-nums">{r.matches}</td>
                     <td className="text-center font-mono tabular-nums">
@@ -80,16 +79,15 @@ export default async function LeaderboardsPage() {
       <details className="mt-4 rounded-2xl border border-border bg-card/60 p-4 text-sm text-muted-foreground">
         <summary className="cursor-pointer font-semibold text-foreground">Como os pontos são calculados</summary>
         <ul className="mt-3 list-disc space-y-1 pl-5">
-          <li>Todo mundo começa com {RATING.start} pontos.</li>
+          <li>Todo mundo começa com 0 pontos, e ninguém perde pontos.</li>
           <li>
-            Elo por time: cada partida compara a média de pontos dos dois times. Vencer um time mais forte rende mais;
-            perder para um mais fraco custa mais. Até {RATING.k} pontos por partida ({RATING.kProvisional} nas{" "}
-            {RATING.provisionalMatches} primeiras).
+            Vitória: +{POINTS.win}. Derrota: +{POINTS.loss}.
           </li>
-          <li>Bônus de MVP, mesmo na derrota: MVP +{RATING.mvpBonus[1]}, 2º +{RATING.mvpBonus[2]}, 3º +{RATING.mvpBonus[3]}.</li>
           <li>
-            Sequência de vitórias: +{RATING.streakBonusPerWin} por vitória seguida anterior (até +{RATING.streakBonusMax}).
+            Sequência de vitórias: a 2ª vitória seguida vale +{POINTS.winStreak2}, e da 3ª em diante +{POINTS.winStreak3}.
           </li>
+          <li>Bônus de MVP da partida (mesmo na derrota): MVP +{POINTS.mvpBonus[1]}, 2º +{POINTS.mvpBonus[2]}.</li>
+          <li>Empate em pontos: fica na frente quem tem mais vitórias, depois o melhor KDA.</li>
         </ul>
       </details>
     </main>

@@ -13,10 +13,12 @@ type Props = {
   now: number
   canFlip: boolean
   onFlip: () => void
+  // Texto depois do nome do time vencedor (ex.: "começa!").
+  resultText?: string
 }
 
 // Cara ou coroa para decidir qual time começa. Quem joga é um capitão; todos veem a mesma moeda.
-export function CoinFlip({ sides, result, coinAt, now, canFlip, onFlip }: Props) {
+export function CoinFlip({ sides, result, coinAt, now, canFlip, onFlip, resultText = "começa!" }: Props) {
   const target = result ? 360 * 5 + (result === "b" ? 180 : 0) : 0
   const [rotation, setRotation] = useState(0)
   const [animate, setAnimate] = useState(true)
@@ -61,7 +63,7 @@ export function CoinFlip({ sides, result, coinAt, now, canFlip, onFlip }: Props)
 
       {landed && result ? (
         <span className="font-display text-lg font-bold uppercase tracking-wider">
-          <span style={{ color: sides[result].color }}>{sides[result].name}</span> começa!
+          <span style={{ color: sides[result].color }}>{sides[result].name}</span> {resultText}
         </span>
       ) : result ? (
         <span className="font-display text-sm font-bold uppercase tracking-wider text-muted-foreground">Girando...</span>

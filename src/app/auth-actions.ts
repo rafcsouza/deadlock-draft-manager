@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation"
 import {
   clearFailures,
+  createGuest,
   createSession,
   destroySession,
   hashSecret,
@@ -45,20 +46,24 @@ export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   if (question.length < 5 || question.length > 120) return { error: "Escolha ou escreva uma pergunta de segurança." }
   if (answer.length < 2) return { error: "Escreva a resposta da pergunta de segurança." }
   if (avatar && !validAvatar(avatar)) return { error: "Não foi possível usar essa imagem. Tente outra." }
-  const steam = parseSteamId(text(form, "steamId"))
-  if ("error" in steam) return { error: steam.error }
+  // SteamID é opcional: serve para ligar o perfil aos stats das partidas.
+  const steamText = text(form, "steamId")
+  const steam = steamText ? parseSteamId(steamText) : null
+  if (steam && "error" in steam) return { error: steam.error }
+  const steamAccountId = steam ? steam.accountId : null
 
   const taken = db.prepare("SELECT 1 FROM users WHERE username = ?").get(username)
   if (taken) return { error: "Esse nome de usuário já está em uso." }
-  const steamTaken = db.prepare("SELECT 1 FROM users WHERE steam_account_id = ?").get(steam.accountId)
-  if (steamTaken) return { error: "Essa conta Steam já está ligada a outro perfil." }
+  if (steamAccountId !== null && db.prepare("SELECT 1 FROM users WHERE steam_account_id = ?").get(steamAccountId)) {
+    return { error: "Essa conta Steam já está ligada a outro perfil." }
+  }
 
   const result = db
     .prepare(
       `INSERT INTO users (username, password_hash, security_question, security_answer_hash, avatar, steam_account_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(username, await hashSecret(password), question, await hashSecret(answer), avatar || null, steam.accountId, Date.now())
+    .run(username, await hashSecret(password), question, await hashSecret(answer), avatar || null, steamAccountId, Date.now())
 
   await createSession(Number(result.lastInsertRowid))
   redirect(safeNext(form.get("next")))
@@ -88,7 +93,8 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
 export async function recoverPassword(state: FormState, form: FormData): Promise<FormState> {
   const username = text(form, "username")
   const user = db
-    .prepare("SELECT id, security_question, security_answer_hash FROM users WHERE username = ?")
+    // Visitantes não têm senha para recuperar.
+    .prepare("SELECT id, security_question, security_answer_hash FROM users WHERE username = ? AND is_guest = 0")
     .get(username) as { id: number; security_question: string; security_answer_hash: string } | undefined
 
   if (!user) return { error: "Usuário não encontrado." }
@@ -114,6 +120,15 @@ export async function recoverPassword(state: FormState, form: FormData): Promise
   db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id)
   await createSession(user.id)
   redirect("/")
+}
+
+export async function signInAsGuest(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    await createGuest(text(form, "nickname"))
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Não foi possível entrar como visitante." }
+  }
+  redirect(safeNext(form.get("next")))
 }
 
 export async function signOut() {

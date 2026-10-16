@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { SignInForm } from "@/components/auth-forms"
+import { GuestForm, SignInForm } from "@/components/auth-forms"
 import { Logo } from "@/components/logo"
 import { ThemedCard } from "@/components/themed-card"
 import { getCurrentUser, safeNext } from "@/lib/auth"
@@ -9,7 +9,9 @@ export const metadata = { title: "Entrar" }
 
 export default async function SignInPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const next = safeNext((await searchParams).next)
-  if (await getCurrentUser()) redirect(next)
+  // Visitante pode abrir esta página para entrar com uma conta de verdade.
+  const user = await getCurrentUser()
+  if (user && !user.isGuest) redirect(next)
 
   return (
     <ThemedCard>
@@ -19,6 +21,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
         <p className="text-sm text-muted-foreground">Entre com seu perfil</p>
       </div>
       <SignInForm next={next} />
+      <GuestForm next={next} />
     </ThemedCard>
   )
 }

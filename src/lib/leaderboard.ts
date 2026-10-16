@@ -1,20 +1,18 @@
 import "server-only"
 import { db } from "@/lib/db"
-import type { Team } from "@/lib/draft-rules"
 import { listDrafts } from "@/lib/drafts"
+import { getAccountLinks, getPlayerNames } from "@/lib/players"
 
-// Pontuação (recalculada do histórico inteiro, em ordem cronológica):
-// - Elo por time: compara a média de pontos dos dois times. Ganho/perda de até K pontos.
-// - Bônus de MVP (mesmo na derrota): 1º +6, 2º +4, 3º +2.
-// - Bônus de sequência: na vitória, +2 por vitória seguida anterior (máx. +8).
-export const RATING = {
-  start: 1000,
-  k: 32,
-  kProvisional: 48,
-  provisionalMatches: 5,
-  mvpBonus: { 1: 6, 2: 4, 3: 2 } as Record<number, number>,
-  streakBonusPerWin: 2,
-  streakBonusMax: 8,
+// Pontuação (recalculada do histórico inteiro, em ordem cronológica). Todo mundo começa com 0
+// e só ganha pontos: vitória vale mais, derrota vale menos, e há bônus por sequência e MVP.
+export const POINTS = {
+  win: 5,
+  loss: 3,
+  // Vitória na sequência: a 2ª seguida vale 6, da 3ª em diante vale 7.
+  winStreak2: 6,
+  winStreak3: 7,
+  // Bônus pela colocação de MVP da partida (vale também na derrota).
+  mvpBonus: { 1: 2, 2: 1 } as Record<number, number>,
 }
 
 export type LeaderboardRow = {
@@ -22,6 +20,8 @@ export type LeaderboardRow = {
   name: string
   hasProfile: boolean
   userId: string | null
+  // Contas Steam da pessoa (mais de uma quando ela joga em contas diferentes); accountId é a principal.
+  accounts: number[]
   rating: number
   matches: number
   wins: number
@@ -33,6 +33,8 @@ export type LeaderboardRow = {
   deaths: number
   assists: number
   lastChange: number
+  // Pontos ganhos/perdidos em cada partida, em ordem cronológica.
+  history: { draftId: string; change: number; rating: number }[]
 }
 
 export function getLeaderboard(): LeaderboardRow[] {
@@ -41,8 +43,11 @@ export function getLeaderboard(): LeaderboardRow[] {
     .filter((m) => m.verified)
     .sort((a, b) => a.playedAt - b.playedAt)
   const rows = new Map<number, LeaderboardRow>()
+  const links = getAccountLinks()
 
-  const row = (accountId: number, steamName: string | null) => {
+  // Contas ligadas somam na conta principal da pessoa.
+  const row = (playedAccount: number, steamName: string | null) => {
+    const accountId = links.main(playedAccount)
     let r = rows.get(accountId)
     if (!r) {
       r = {
@@ -50,7 +55,8 @@ export function getLeaderboard(): LeaderboardRow[] {
         name: steamName ?? `Steam ${accountId}`,
         hasProfile: false,
         userId: null,
-        rating: RATING.start,
+        accounts: links.accounts(accountId),
+        rating: 0,
         matches: 0,
         wins: 0,
         losses: 0,
@@ -61,32 +67,27 @@ export function getLeaderboard(): LeaderboardRow[] {
         deaths: 0,
         assists: 0,
         lastChange: 0,
+        history: [],
       }
       rows.set(accountId, r)
     }
-    if (steamName) r.name = steamName // nome mais recente da Steam
+    // Nome mais recente da Steam, de preferência o da conta principal.
+    if (steamName && (playedAccount === accountId || r.name.startsWith("Steam "))) r.name = steamName
     return r
   }
 
   for (const match of matches) {
-    const players = match.stats.map((p) => ({ p, r: row(p.accountId, p.steamName) }))
-    const avg = (team: Team) => {
-      const list = players.filter((x) => x.p.team === team)
-      return list.reduce((s, x) => s + x.r.rating, 0) / Math.max(list.length, 1)
-    }
-    const teamRating = { a: avg("a"), b: avg("b") }
-
-    for (const { p, r } of players) {
+    for (const p of match.stats) {
+      const r = row(p.accountId, p.steamName)
       const won = p.team === match.winner
-      const other = p.team === "a" ? "b" : "a"
-      const expected = 1 / (1 + 10 ** ((teamRating[other] - teamRating[p.team]) / 400))
-      const k = r.matches < RATING.provisionalMatches ? RATING.kProvisional : RATING.k
-      let change = k * ((won ? 1 : 0) - expected)
-      change += RATING.mvpBonus[p.mvpRank ?? 0] ?? 0
-      if (won && r.streak > 0) change += Math.min(r.streak * RATING.streakBonusPerWin, RATING.streakBonusMax)
+      // Sequência de vitórias antes desta partida (0 se a última foi derrota).
+      const streakBefore = Math.max(r.streak, 0)
+      let change = won ? (streakBefore >= 2 ? POINTS.winStreak3 : streakBefore === 1 ? POINTS.winStreak2 : POINTS.win) : POINTS.loss
+      change += POINTS.mvpBonus[p.mvpRank ?? 0] ?? 0
 
       r.rating += change
       r.lastChange = change
+      r.history.push({ draftId: match.id, change: Math.round(change), rating: Math.round(r.rating) })
       r.matches++
       r.kills += p.kills
       r.deaths += p.deaths
@@ -103,14 +104,14 @@ export function getLeaderboard(): LeaderboardRow[] {
     }
   }
 
-  // Quem tem perfil aparece com o nome do perfil.
-  const ids = [...rows.keys()]
+  // Quem tem perfil aparece com o nome do perfil (de qualquer uma das suas contas).
+  const ids = [...rows.values()].flatMap((r) => r.accounts)
   if (ids.length) {
     const profiles = db
       .prepare(`SELECT id, username, steam_account_id FROM users WHERE steam_account_id IN (${ids.map(() => "?").join(",")})`)
       .all(...ids) as { id: number; username: string; steam_account_id: number }[]
     for (const u of profiles) {
-      const r = rows.get(u.steam_account_id)
+      const r = rows.get(links.main(u.steam_account_id))
       if (r) {
         r.name = u.username
         r.hasProfile = true
@@ -119,7 +120,19 @@ export function getLeaderboard(): LeaderboardRow[] {
     }
   }
 
+  // Nome fixo definido para o jogador vale acima de tudo.
+  for (const [accountId, name] of getPlayerNames()) {
+    const r = rows.get(links.main(accountId))
+    if (r) r.name = name
+  }
+
   return [...rows.values()]
     .map((r) => ({ ...r, rating: Math.round(r.rating), lastChange: Math.round(r.lastChange) }))
-    .sort((a, b) => b.rating - a.rating || b.wins - a.wins)
+    // Desempate: mais vitórias, depois melhor KDA.
+    .sort(
+      (a, b) =>
+        b.rating - a.rating ||
+        b.wins - a.wins ||
+        (b.kills + b.assists) / Math.max(b.deaths, 1) - (a.kills + a.assists) / Math.max(a.deaths, 1),
+    )
 }

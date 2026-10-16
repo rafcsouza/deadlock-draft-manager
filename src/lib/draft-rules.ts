@@ -34,6 +34,16 @@ export function buildSteps(first: Team | null): Step[] {
   return BASE_STEPS.map((s) => ({ ...s, team: s.team === "a" ? "b" : "a" }))
 }
 
+// Escolha de jogadores pelos capitães (formato "snake"): quem ganhou a moeda escolhe 1,
+// o outro 2, e assim por diante, até os dois times terem 5 jogadores além do capitão.
+// Escrito com o time A começando; buildPlayerSteps inverte se o time B vencer a moeda.
+const PLAYER_ORDER = [1, 2, 2, 2, 2, 1]
+
+export function buildPlayerSteps(first: Team): Team[] {
+  const other: Team = first === "a" ? "b" : "a"
+  return PLAYER_ORDER.flatMap((n, i) => Array<Team>(n).fill(i % 2 === 0 ? first : other))
+}
+
 export const slotsFor = (team: Team, action: Step["action"]) =>
   BASE_STEPS.filter((s) => s.team === team && s.action === action).length
 
@@ -83,6 +93,11 @@ export type RoomView = {
   hostId: string | null
   lobby: PlayerView[]
   teams: Record<Team, PlayerView[]>
+  // Fases: capitães (playerFirst null) → escolha de jogadores → heróis (first definido).
+  // playerFirst: time que ganhou a moeda e escolhe jogador primeiro; o outro começa nos heróis.
+  playerFirst: Team | null
+  playerPicks: number
+  playersDone: boolean
   first: Team | null
   coinAt: number | null
   actions: number[]
@@ -97,7 +112,10 @@ export type RoomView = {
 
 export type RoomAction =
   | { type: "move"; playerId: string; to: Team | "lobby" }
-  | { type: "flip" }
+  | { type: "randomizeCaptains" }
+  | { type: "startDraft" }
+  | { type: "pickPlayer"; playerId: string }
+  | { type: "endPlayerPicks" }
   | { type: "choose"; heroId: number }
   | { type: "turnSeconds"; seconds: number }
   | { type: "restart" }

@@ -21,8 +21,10 @@ async function toAvatar(file: File) {
 }
 
 // Campo de avatar: o valor final vai num input escondido chamado "avatar".
-export function AvatarPicker() {
+// Com "initial" (edição de perfil): mostra o avatar atual e envia keepValue se a pessoa não mexer nele.
+export function AvatarPicker({ initial, keepValue }: { initial?: string | null; keepValue?: string } = {}) {
   const [avatar, setAvatar] = useState("")
+  const [keep, setKeep] = useState(Boolean(initial))
   const [error, setError] = useState("")
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -35,22 +37,26 @@ export function AvatarPicker() {
     if (file.size > MAX_FILE_BYTES) return setError("Imagem muito grande (máximo 20 MB).")
     try {
       setAvatar(await toAvatar(file))
+      setKeep(false)
     } catch {
       setError("Não foi possível ler essa imagem.")
     }
   }
+
+  const shown = avatar || (keep ? initial : null)
+  const value = avatar || (keep && keepValue ? keepValue : "")
 
   return (
     <div className="flex flex-col items-center gap-2">
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        aria-label={avatar ? "Trocar avatar" : "Escolher avatar"}
+        aria-label={shown ? "Trocar avatar" : "Escolher avatar"}
         className="group relative h-20 w-20 overflow-hidden rounded-xl border border-dashed border-muted-foreground/50 bg-muted/40 transition-colors hover:border-foreground"
       >
-        {avatar ? (
+        {shown ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatar} alt="Seu avatar" className="h-full w-full object-cover" />
+          <img src={shown} alt="Seu avatar" className="h-full w-full object-cover" />
         ) : (
           <svg className="mx-auto h-7 w-7 text-muted-foreground group-hover:text-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -60,17 +66,24 @@ export function AvatarPicker() {
       </button>
       <div className="flex gap-3 text-xs">
         <button type="button" onClick={() => fileRef.current?.click()} className="text-muted-foreground hover:text-foreground">
-          {avatar ? "Trocar avatar" : "Escolher avatar (opcional)"}
+          {shown ? "Trocar avatar" : "Escolher avatar (opcional)"}
         </button>
-        {avatar && (
-          <button type="button" onClick={() => setAvatar("")} className="text-muted-foreground hover:text-foreground">
+        {shown && (
+          <button
+            type="button"
+            onClick={() => {
+              setAvatar("")
+              setKeep(false)
+            }}
+            className="text-muted-foreground hover:text-foreground"
+          >
             Remover
           </button>
         )}
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
       <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden" />
-      <input type="hidden" name="avatar" value={avatar} />
+      <input type="hidden" name="avatar" value={value} />
     </div>
   )
 }

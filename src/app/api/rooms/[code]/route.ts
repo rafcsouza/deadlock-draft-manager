@@ -1,8 +1,21 @@
+import { avatarUrl } from "@/lib/avatar"
 import { getCurrentUser } from "@/lib/auth"
-import type { RoomAction } from "@/lib/draft-rules"
-import { applyAction, submitMatch } from "@/lib/room-store"
+import { ROOM_CODE_PATTERN, type RoomAction } from "@/lib/draft-rules"
+import { getHeroes } from "@/lib/heroes"
+import { applyAction, pollRoom, submitMatch } from "@/lib/room-store"
 
 export const dynamic = "force-dynamic"
+
+// Estado atual da sala, para quando a conexão ao vivo não funciona (ex.: túnel rápido do Cloudflare).
+export async function GET(_: Request, { params }: { params: Promise<{ code: string }> }) {
+  const { code } = await params
+  if (!ROOM_CODE_PATTERN.test(code)) return Response.json({ error: "Sala inválida." }, { status: 404 })
+  const user = await getCurrentUser()
+  if (!user) return Response.json({ error: "Faça login." }, { status: 401 })
+  const heroIds = (await getHeroes()).map((h) => h.id)
+  const view = pollRoom(code, heroIds, { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar) })
+  return Response.json(view, { headers: { "Cache-Control": "no-store" } })
+}
 
 // Ações na sala (mover jogador, moeda, escolher herói, chat...). O servidor valida
 // as permissões e, se der certo, avisa todos pelo canal ao vivo.

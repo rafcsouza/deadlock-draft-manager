@@ -8,6 +8,7 @@ import { MatchResultPanel } from "@/components/match-result"
 import { EmptySlot, PlayerAvatar } from "@/components/player-avatar"
 import { RoomChat } from "@/components/room-chat"
 import {
+  buildPlayerSteps,
   buildSteps,
   COIN_TOTAL_MS,
   slotsFor,
@@ -70,10 +71,14 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
   const actions = view.actions
   const steps = buildSteps(view.first)
   const hasCaptains = teams.a.length > 0 && teams.b.length > 0
-  const started = Boolean(view.first)
+  // Fases: capitães → (moeda) → escolha de jogadores → draft de heróis.
+  const started = view.playerFirst !== null
+  const heroPhase = Boolean(view.first)
   const finished = actions.length === TOTAL_STEPS
   const coinPhase = view.coinAt !== null && now < view.coinAt + COIN_TOTAL_MS
-  const current = started && !finished && !coinPhase ? steps[actions.length] : null
+  const playerSteps = view.playerFirst ? buildPlayerSteps(view.playerFirst) : []
+  const pickTeam = started && !view.playersDone && !coinPhase ? (playerSteps[view.playerPicks] ?? null) : null
+  const current = heroPhase && !finished && !coinPhase ? steps[actions.length] : null
   const remaining = view.deadline ? Math.ceil((view.deadline - now) / 1000) : 0
 
   const myTeam = (["a", "b"] as const).find((t) => teams[t].some((p) => p.id === meId)) ?? null
@@ -86,6 +91,10 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
   }
   const selectedIsBot = view.lobby.some((p) => p.id === selected && p.bot)
   const canManage = isHost || captainTeam !== null
+  const canPickPlayer = pickTeam !== null && actsFor(pickTeam)
+  const pickPlayer = (playerId: string | null | undefined) => {
+    if (playerId && canPickPlayer) send({ type: "pickPlayer", playerId })
+  }
 
   const heroesOf = (team: Team, action: Step["action"]) =>
     actions
@@ -127,22 +136,26 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
         >
           <div className="flex flex-1 flex-wrap content-start gap-2 overflow-y-auto p-4 pb-10">
             {view.lobby.map((p) => {
-              // Você pode se arrastar; capitães podem arrastar qualquer um da sala de espera.
-              // Anfitrião também move os jogadores fictícios.
-              const movable = !started && (p.id === meId || captainTeam !== null || (isHost && p.bot))
+              // Antes do draft: você se move (ou o anfitrião move um fictício) para a vaga de capitão.
+              // Na escolha de jogadores: o capitão da vez clica (ou arrasta) para escolher.
+              const movable = !started && (p.id === meId || (isHost && p.bot))
               return (
                 <PlayerAvatar
                   key={p.id}
                   player={p}
                   isMe={p.id === meId}
                   selected={selected === p.id}
-                  draggable={movable}
-                  onClick={() => movable && setSelected(selected === p.id ? null : p.id)}
+                  draggable={movable || canPickPlayer}
+                  onClick={() => {
+                    if (canPickPlayer) pickPlayer(p.id)
+                    else if (movable) setSelected(selected === p.id ? null : p.id)
+                  }}
+                  hint={canPickPlayer ? "Clique para escolher" : undefined}
                 />
               )
             })}
             {/* Jogadores fictícios para testes (só o anfitrião adiciona). */}
-            {isHost && !started && (
+            {isHost && !view.playersDone && (
               <button
                 onClick={() => send({ type: "addBot" })}
                 title="Adicionar jogador fictício"
@@ -157,8 +170,12 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             )}
           </div>
           <p className="px-4 pb-3 text-[11px] leading-snug text-muted-foreground">
-            Clique no + de um time para entrar. O primeiro de cada time é o capitão e pode puxar jogadores para o time.
-            {isHost && " Como anfitrião, use o + aqui para criar jogadores fictícios e testar."}
+            {!started
+              ? "Primeiro, os capitães: clique no + de um time para ser o capitão dele. Depois, inicie o draft e os capitães escolhem os jogadores."
+              : view.playersDone
+                ? "Times fechados. Quem ficou aqui não entrou em nenhum time."
+                : "Os capitães estão escolhendo os jogadores daqui."}
+            {isHost && !view.playersDone && " Como anfitrião, use o + aqui para criar jogadores fictícios e testar."}
           </p>
         </div>
 
@@ -186,10 +203,10 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 isCaptain={captainTeam === team}
                 isHost={isHost}
                 picks={heroesOf(team, "pick")}
-                active={current?.team === team}
+                active={current?.team === team || pickTeam === team}
                 locked={started}
-                canAssign={selected !== null && (captainTeam === team || (isHost && selectedIsBot))}
-                onAdd={(playerId) => move(playerId ?? selected, team)}
+                canAssign={selected !== null && teams[team].length === 0 && (selected === meId || (isHost && selectedIsBot))}
+                onAdd={(playerId) => (canPickPlayer ? pickPlayer(playerId) : move(playerId ?? selected, team))}
                 onRemove={(playerId) => move(playerId, "lobby")}
               />
             </div>
@@ -212,14 +229,31 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                     : "Vale para cada pick e ban. Só pode ser alterado antes da primeira escolha."
               }
             />
-            {hasCaptains && (!started || coinPhase) ? (
+            {!started ? (
+              <CaptainsBanner
+                hasCaptains={hasCaptains}
+                canRandomize={isHost}
+                canStart={hasCaptains && canManage}
+                onRandomize={() => send({ type: "randomizeCaptains" })}
+                onStart={() => send({ type: "startDraft" })}
+              />
+            ) : coinPhase ? (
               <CoinFlip
                 sides={{ a: { ...TEAMS.a, letter: "H" }, b: { ...TEAMS.b, letter: "A" } }}
-                result={view.first}
+                result={view.playerFirst}
                 coinAt={view.coinAt}
                 now={now}
-                canFlip={actsFor("a") || actsFor("b")}
-                onFlip={() => send({ type: "flip" })}
+                canFlip={false}
+                onFlip={() => {}}
+                resultText="escolhe jogador primeiro"
+              />
+            ) : !view.playersDone ? (
+              <PlayersBanner
+                steps={playerSteps}
+                picks={view.playerPicks}
+                myTurn={canPickPlayer}
+                canEnd={canManage}
+                onEnd={() => send({ type: "endPlayerPicks" })}
               />
             ) : (
               <TurnBanner
@@ -330,6 +364,86 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
         )}
       </div>
     </main>
+  )
+}
+
+function CaptainsBanner({
+  hasCaptains,
+  canRandomize,
+  canStart,
+  onRandomize,
+  onStart,
+}: {
+  hasCaptains: boolean
+  canRandomize: boolean
+  canStart: boolean
+  onRandomize: () => void
+  onStart: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3">
+      {!hasCaptains && <span className="text-sm text-muted-foreground">Escolham os dois capitães</span>}
+      {canRandomize && (
+        <button
+          onClick={onRandomize}
+          className="rounded-full border border-border bg-muted px-4 py-1.5 font-display text-xs font-bold uppercase tracking-wider transition-colors hover:border-muted-foreground"
+        >
+          Randomizar capitães
+        </button>
+      )}
+      {canStart && (
+        <button
+          onClick={onStart}
+          className="rounded-full px-5 py-1.5 font-display text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-black/40"
+          style={{ background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }}
+        >
+          Iniciar draft
+        </button>
+      )}
+      {hasCaptains && !canStart && <span className="text-sm text-muted-foreground">Aguardando um capitão iniciar o draft</span>}
+    </div>
+  )
+}
+
+function PlayersBanner({
+  steps,
+  picks,
+  myTurn,
+  canEnd,
+  onEnd,
+}: {
+  steps: Team[]
+  picks: number
+  myTurn: boolean
+  canEnd: boolean
+  onEnd: () => void
+}) {
+  const team = steps[picks]
+  if (!team) return null
+  // Quantos jogadores seguidos o time ainda escolhe neste turno.
+  let count = 0
+  while (steps[picks + count] === team) count++
+  const { name, color } = TEAMS[team]
+  const verb = `escolhe ${count === 1 ? "um jogador" : `${count} jogadores`}`
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3">
+      <span
+        className="rounded-full border px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider"
+        style={{ borderColor: color, color }}
+      >
+        {myTurn ? "Sua vez: " : `${name} `}
+        <span className="text-foreground">{verb}</span>
+      </span>
+      {canEnd && (
+        <button
+          onClick={onEnd}
+          title="Fecha os times como estão e vai para os heróis"
+          className="text-xs text-muted-foreground underline hover:text-foreground"
+        >
+          Encerrar escolha
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -579,8 +693,8 @@ function TeamCard({
                 // Prefixos evitam colisão entre a posição do quadrado vazio e o ID de um jogador (ex.: "1").
                 key={`vazio-${i}`}
                 captain={i === 0}
-                // Só o próximo quadrado livre recebe o "+", e só se você ainda não está neste time.
-                onJoin={!locked && i === players.length && !players.some((x) => x.id === meId) ? () => onAdd(meId) : undefined}
+                // Antes do draft, só a vaga de capitão (vazia) recebe o "+"; os demais entram pela escolha dos capitães.
+                onJoin={!locked && i === 0 && players.length === 0 ? () => onAdd(meId) : undefined}
               />
             )
           }
