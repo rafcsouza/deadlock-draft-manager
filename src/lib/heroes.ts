@@ -7,6 +7,10 @@ export type Hero = {
   id: number
   name: string
   card: string
+  /** Retrato com vida baixa, usado quando o herói é banido. */
+  critical: string
+  /** Retrato de sequência de abates ("on fire"), usado quando o herói é escolhido. */
+  gloat: string
   color: string
 }
 
@@ -29,12 +33,17 @@ async function fetchHeroes(): Promise<Hero[]> {
       // Só `player_selectable`: a API às vezes mantém `in_development` em heróis
       // já jogáveis (ex.: Baba, out/2026), o que os escondia do draft.
       .filter((h) => h.player_selectable)
-      .map((h) => ({
-        id: h.id,
-        name: h.name,
-        card: h.images.icon_hero_card_webp ?? h.images.icon_hero_card ?? "",
-        color: h.colors?.style_hex ?? "#888888",
-      }))
+      .map((h) => {
+        const card = h.images.icon_hero_card_webp ?? h.images.icon_hero_card ?? ""
+        return {
+          id: h.id,
+          name: h.name,
+          card,
+          critical: h.images.hero_card_critical_webp ?? h.images.hero_card_critical ?? card,
+          gloat: h.images.hero_card_gloat_webp ?? h.images.hero_card_gloat ?? card,
+          color: h.colors?.style_hex ?? "#888888",
+        }
+      })
       .filter((h) => h.card)
   } catch {
     return []
@@ -43,4 +52,4 @@ async function fetchHeroes(): Promise<Hero[]> {
 
 // A resposta completa da API passa de 2 MB (limite do cache do Next),
 // então cacheamos só a lista já filtrada, por 1 hora (heróis novos aparecem rápido).
-export const getHeroes = unstable_cache(fetchHeroes, ["heroes-v2"], { revalidate: 3600 })
+export const getHeroes = unstable_cache(fetchHeroes, ["heroes-v3"], { revalidate: 3600 })
