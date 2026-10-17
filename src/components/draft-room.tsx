@@ -54,6 +54,8 @@ type RoomScreenProps = Omit<ReturnType<typeof useRoom>, "view"> & { view: RoomVi
 // Separado do DraftRoom para os hooks (ex.: medir a grade de heróis) rodarem só com a sala já carregada.
 function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: RoomScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
+  // Herói marcado no primeiro clique; o segundo clique no mesmo card confirma o ban/pick.
+  const [pending, setPending] = useState<number | null>(null)
   const { ref: heroArea, grid: heroGrid } = useFitGrid<HTMLDivElement>(heroes.length, 3 / 4, HERO_GAP)
   const heroById = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes])
 
@@ -118,6 +120,15 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
       document.title = original
     }
   }, [myAction, actions.length])
+
+  // A marcação some quando o turno muda; Esc também cancela.
+  useEffect(() => setPending(null), [myAction, actions.length])
+  useEffect(() => {
+    if (!pending) return
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setPending(null)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [pending])
 
   const move = (playerId: string | null | undefined, to: Team | "lobby") => {
     setSelected(null)
@@ -305,7 +316,12 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             )}
           </div>
           {/* Os cards são dimensionados para todos caberem na área, sem rolagem. */}
-          <div ref={heroArea} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3">
+          <div
+            ref={heroArea}
+            // Clicar fora dos cards cancela a marcação.
+            onClick={(e) => !(e.target as HTMLElement).closest("button") && setPending(null)}
+            className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3"
+          >
             <div
               className="grid"
               style={{
@@ -317,26 +333,41 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
               {heroes.map((h) => {
                 const status = statusOf(h)
                 const clickable = current !== null && actsFor(current.team) && status === null
+                const marked = clickable && pending === h.id
                 return (
                   <button
                     key={h.id}
-                    onClick={() => clickable && send({ type: "choose", heroId: h.id })}
+                    onClick={() => {
+                      if (!clickable) return
+                      // 1º clique marca; 2º clique no mesmo card confirma.
+                      if (marked) {
+                        setPending(null)
+                        send({ type: "choose", heroId: h.id })
+                      } else setPending(h.id)
+                    }}
                     disabled={!clickable}
-                    title={h.name}
+                    title={marked ? `Clique de novo para confirmar: ${h.name}` : h.name}
                     // Disponível: sem cor; ao passar o mouse, cresce em relevo e ganha a cor do herói.
                     // Na sua vez, a borda do hover ganha a cor da ação (vermelho banir, verde escolher).
                     className={`group relative aspect-[3/4] overflow-hidden rounded-lg border-b-2 bg-muted transition-[transform,box-shadow,border-color] duration-200 ${
                       status
                         ? ""
-                        : clickable
-                          ? "border-border hover:z-10 hover:scale-110 hover:border-[var(--turn-color)] hover:shadow-xl hover:shadow-black/70 hover:outline-2 hover:outline-[var(--turn-color)]"
-                          : "border-border hover:z-10 hover:scale-110 hover:border-[var(--hero-color)] hover:shadow-xl hover:shadow-black/70"
+                        : marked
+                          ? "z-10 scale-110 border-[var(--turn-color)] shadow-xl shadow-black/70"
+                          : clickable
+                            ? "border-border hover:z-10 hover:scale-110 hover:border-[var(--turn-color)] hover:shadow-xl hover:shadow-black/70 hover:outline-2 hover:outline-[var(--turn-color)]"
+                            : "border-border hover:z-10 hover:scale-110 hover:border-[var(--hero-color)] hover:shadow-xl hover:shadow-black/70"
                     } ${clickable ? "cursor-pointer" : "cursor-default"}`}
                     style={
                       {
                         "--hero-color": h.color,
                         borderColor: status ? h.color : undefined,
-                        outline: status?.action === "pick" ? `2px solid ${TEAMS[status.team].color}` : undefined,
+                        outline:
+                          status?.action === "pick"
+                            ? `2px solid ${TEAMS[status.team].color}`
+                            : marked
+                              ? `3px solid ${turnColor}`
+                              : undefined,
                         outlineOffset: -2,
                       } as React.CSSProperties
                     }
@@ -347,7 +378,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                       alt={h.name}
                       // Disponível: cinza, ganha cor ao passar o mouse. Banido/escolhido: retrato do estado, colorido.
                       className={`h-full w-full object-cover transition-[filter] duration-200 ${
-                        status?.action === "ban" ? "opacity-60" : status ? "" : "grayscale group-hover:grayscale-0"
+                        status?.action === "ban" ? "opacity-60" : status || marked ? "" : "grayscale group-hover:grayscale-0"
                       }`}
                     />
                     {/* Em cards muito pequenos o nome não caberia; fica no tooltip. */}
@@ -356,7 +387,37 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                         {h.name}
                       </span>
                     )}
-                    {clickable && myAction && (
+                    {marked && myAction && (
+                      // Marcado: pede a confirmação em cima do próprio card.
+                      <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/30">
+                        <span
+                          className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-black tracking-widest text-white shadow-lg shadow-black/60"
+                          style={{ background: turnColor }}
+                        >
+                          <TurnIcon action={myAction} className="h-2.5 w-2.5" />
+                          {myAction === "ban" ? "BAN?" : "PICK?"}
+                        </span>
+                        {heroGrid && heroGrid.width >= 52 && (
+                          <span className="px-1 text-center text-[9px] font-semibold leading-tight text-white drop-shadow">
+                            clique para confirmar
+                          </span>
+                        )}
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          aria-label="Cancelar"
+                          title="Cancelar"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setPending(null)
+                          }}
+                          className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-[10px] leading-none text-white hover:bg-black"
+                        >
+                          ✕
+                        </span>
+                      </span>
+                    )}
+                    {clickable && !marked && myAction && (
                       <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                         <span
                           className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest text-white shadow-lg shadow-black/60"
