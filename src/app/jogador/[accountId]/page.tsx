@@ -8,7 +8,7 @@ import { TEAM_NAMES } from "@/lib/draft-rules"
 import { listDrafts } from "@/lib/drafts"
 import { formatDuration, formatSouls } from "@/lib/format"
 import { getHeroes } from "@/lib/heroes"
-import { getLeaderboard } from "@/lib/leaderboard"
+import { getLeaderboard, MIN_MATCHES } from "@/lib/leaderboard"
 import { getAccountLinks } from "@/lib/players"
 import { toSteam64 } from "@/lib/steam"
 
@@ -27,8 +27,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
   if (mainId !== accountId) redirect(`/jogador/${mainId}`)
 
   const board = getLeaderboard()
-  const rank = board.findIndex((r) => r.accountId === accountId)
-  const row = board[rank]
+  const row = board.find((r) => r.accountId === accountId)
   if (!row) notFound()
 
   const heroes = new Map((await getHeroes()).map((h) => [h.id, h]))
@@ -85,7 +84,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-display text-3xl font-bold tracking-wide">{row.name}</h1>
           <p className="text-xs text-muted-foreground">
-            #{rank + 1} no leaderboard · {row.hasProfile ? "tem perfil no site" : "sem perfil no site"} ·{" "}
+            {row.rank !== null ? `#${row.rank} no leaderboard` : `em avaliação (menos de ${MIN_MATCHES} partidas)`} · {row.hasProfile ? "tem perfil no site" : "sem perfil no site"} ·{" "}
             {row.accounts.map((id, i) => (
               <span key={id}>
                 {i > 0 && " · "}

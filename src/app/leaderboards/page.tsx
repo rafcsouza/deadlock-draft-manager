@@ -1,13 +1,16 @@
 import Link from "next/link"
 import { Logo } from "@/components/logo"
+import { Fragment } from "react"
 import { requireUser } from "@/lib/auth"
-import { getLeaderboard, POINTS } from "@/lib/leaderboard"
+import { getHeroes } from "@/lib/heroes"
+import { getLeaderboard, MIN_MATCHES, POINTS } from "@/lib/leaderboard"
 
 export const metadata = { title: "Leaderboards" }
 
 export default async function LeaderboardsPage() {
   const user = await requireUser("/leaderboards")
   const rows = getLeaderboard()
+  const heroes = new Map((await getHeroes()).map((h) => [h.id, h]))
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-4 py-8">
@@ -43,16 +46,46 @@ export default async function LeaderboardsPage() {
               {rows.map((r, i) => {
                 const kda = (r.kills + r.assists) / Math.max(r.deaths, 1)
                 const me = r.userId === String(user.id)
+                const hero = r.topHero ? heroes.get(r.topHero.heroId) : undefined
+                // Divisória antes do primeiro jogador em avaliação.
+                const firstProvisional = r.provisional && !rows[i - 1]?.provisional
                 return (
-                  <tr key={r.accountId} className={`border-t border-border/60 [&>td]:px-2 [&>td]:py-2 ${me ? "bg-muted/60" : ""}`}>
-                    <td className={`text-center font-display text-base font-bold ${i < 3 ? "text-yellow-300" : "text-muted-foreground"}`}>
-                      {i + 1}
+                  <Fragment key={r.accountId}>
+                    {firstProvisional && (
+                      <tr>
+                        <td colSpan={9} className="px-2 pb-1 pt-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          Em avaliação · menos de {MIN_MATCHES} partidas
+                        </td>
+                      </tr>
+                    )}
+                  <tr className={`border-t border-border/60 [&>td]:px-2 [&>td]:py-2 ${me ? "bg-muted/60" : ""} ${r.provisional ? "opacity-70" : ""}`}>
+                    <td className="text-center">
+                      <span className={`block font-display text-base font-bold leading-tight ${r.rank !== null && r.rank <= 3 ? "text-yellow-300" : "text-muted-foreground"}`}>
+                        {r.rank ?? "–"}
+                      </span>
+                      <RankChange change={r.rankChange} ranked={r.rank !== null} />
                     </td>
                     <td>
-                      <Link href={`/jogador/${r.accountId}`} className={`hover:underline ${r.hasProfile ? "font-semibold" : "text-foreground/80"}`}>
-                        {r.name}
-                      </Link>
-                      {r.hasProfile && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">perfil</span>}
+                      <span className="flex items-center gap-2">
+                        {hero ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={hero.card}
+                            alt={hero.name}
+                            title={`Mais jogado: ${hero.name} (${r.topHero!.matches} ${r.topHero!.matches === 1 ? "partida" : "partidas"})`}
+                            className="h-8 w-6 shrink-0 rounded object-cover"
+                          />
+                        ) : (
+                          <span className="h-8 w-6 shrink-0 rounded bg-muted" />
+                        )}
+                        <Link href={`/jogador/${r.accountId}`} className={`hover:underline ${r.hasProfile ? "font-semibold" : "text-foreground/80"}`}>
+                          {r.name}
+                        </Link>
+                        {r.hasProfile && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">perfil</span>}
+                        {r.provisional && (
+                          <span className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">em avaliação</span>
+                        )}
+                      </span>
                     </td>
                     <td className="text-right">
                       <span className="font-mono font-bold tabular-nums">{r.rating}</span>
@@ -64,11 +97,17 @@ export default async function LeaderboardsPage() {
                     </td>
                     <td className="text-right font-mono tabular-nums">{Math.round((r.wins / r.matches) * 100)}%</td>
                     <td className="text-center font-mono tabular-nums">{r.mvps || "–"}</td>
-                    <td className={`text-center font-mono tabular-nums ${r.streak > 0 ? "text-green-400" : "text-red-400"}`}>
+                    <td
+                      className={`text-center font-mono tabular-nums ${r.streak > 0 ? "text-green-400" : "text-red-400"}`}
+                      title={r.streak >= 2 ? `${r.streak} vitórias seguidas` : r.streak <= -2 ? `${-r.streak} derrotas seguidas` : undefined}
+                    >
+                      {r.streak >= 2 && "🔥 "}
+                      {r.streak <= -2 && "🧊 "}
                       {r.streak > 0 ? `${r.streak}V` : `${-r.streak}D`}
                     </td>
                     <td className="text-right font-mono tabular-nums">{kda.toFixed(2)}</td>
                   </tr>
+                  </Fragment>
                 )
               })}
             </tbody>
@@ -88,8 +127,22 @@ export default async function LeaderboardsPage() {
           </li>
           <li>Bônus de MVP da partida (mesmo na derrota): MVP +{POINTS.mvpBonus[1]}, 2º +{POINTS.mvpBonus[2]}.</li>
           <li>Empate em pontos: fica na frente quem tem mais vitórias, depois o melhor KDA.</li>
+          <li>Com menos de {MIN_MATCHES} partidas, o jogador fica "em avaliação": aparece no fim da tabela, sem posição.</li>
+          <li>As setas mostram quantas posições cada um subiu (▲) ou caiu (▼) com a última partida.</li>
         </ul>
       </details>
     </main>
+  )
+}
+
+// Seta de quantas posições o jogador subiu ou caiu com a última partida.
+function RankChange({ change, ranked }: { change: number | null; ranked: boolean }) {
+  if (!ranked) return null
+  if (change === null) return <span className="block text-[9px] font-semibold uppercase text-sky-400">novo</span>
+  if (change === 0) return null
+  return (
+    <span className={`block font-mono text-[10px] font-bold tabular-nums ${change > 0 ? "text-green-400" : "text-red-400"}`}>
+      {change > 0 ? `▲${change}` : `▼${-change}`}
+    </span>
   )
 }

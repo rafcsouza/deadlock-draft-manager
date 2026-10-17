@@ -15,6 +15,9 @@ export const POINTS = {
   mvpBonus: { 1: 2, 2: 1 } as Record<number, number>,
 }
 
+// Com menos partidas que isso, o jogador fica "em avaliação": aparece no fim, sem posição.
+export const MIN_MATCHES = 3
+
 export type LeaderboardRow = {
   accountId: number
   name: string
@@ -35,15 +38,63 @@ export type LeaderboardRow = {
   lastChange: number
   // Pontos ganhos/perdidos em cada partida, em ordem cronológica.
   history: { draftId: string; change: number; rating: number }[]
+  // Partidas por herói (heroId -> partidas).
+  heroes: Map<number, number>
+  // Herói mais jogado (empate: o jogado mais recentemente).
+  topHero: { heroId: number; matches: number } | null
+  provisional: boolean
+  // Posição na tabela (null em avaliação) e quanto subiu (+) ou caiu (-) desde a partida anterior.
+  // rankChange null: não tinha posição antes da última partida.
+  rank: number | null
+  rankChange: number | null
 }
+
+type Match = ReturnType<typeof listDrafts>[number]
 
 export function getLeaderboard(): LeaderboardRow[] {
   // Partidas de print ainda não confirmadas pela API não contam (os jogadores não têm SteamID).
   const matches = listDrafts(100000)
     .filter((m) => m.verified)
     .sort((a, b) => a.playedAt - b.playedAt)
-  const rows = new Map<number, LeaderboardRow>()
   const links = getAccountLinks()
+  const rows = aggregate(matches, links)
+
+  // Setas: compara com a tabela de antes da última partida.
+  const before = new Map(
+    rank(aggregate(matches.slice(0, -1), links)).map((r) => [r.accountId, r.rank]),
+  )
+
+  // Quem tem perfil aparece com o nome do perfil (de qualquer uma das suas contas).
+  const ids = [...rows.values()].flatMap((r) => r.accounts)
+  if (ids.length) {
+    const profiles = db
+      .prepare(`SELECT id, username, steam_account_id FROM users WHERE steam_account_id IN (${ids.map(() => "?").join(",")})`)
+      .all(...ids) as { id: number; username: string; steam_account_id: number }[]
+    for (const u of profiles) {
+      const r = rows.get(links.main(u.steam_account_id))
+      if (r) {
+        r.name = u.username
+        r.hasProfile = true
+        r.userId = String(u.id)
+      }
+    }
+  }
+
+  // Nome fixo definido para o jogador vale acima de tudo.
+  for (const [accountId, name] of getPlayerNames()) {
+    const r = rows.get(links.main(accountId))
+    if (r) r.name = name
+  }
+
+  return rank(rows).map((r) => {
+    const prev = before.get(r.accountId)
+    return { ...r, rankChange: r.rank !== null && prev != null ? prev - r.rank : null }
+  })
+}
+
+// Soma as partidas (em ordem cronológica) por pessoa.
+function aggregate(matches: Match[], links: ReturnType<typeof getAccountLinks>): Map<number, LeaderboardRow> {
+  const rows = new Map<number, LeaderboardRow>()
 
   // Contas ligadas somam na conta principal da pessoa.
   const row = (playedAccount: number, steamName: string | null) => {
@@ -68,6 +119,11 @@ export function getLeaderboard(): LeaderboardRow[] {
         assists: 0,
         lastChange: 0,
         history: [],
+        heroes: new Map(),
+        topHero: null,
+        provisional: true,
+        rank: null,
+        rankChange: null,
       }
       rows.set(accountId, r)
     }
@@ -89,6 +145,9 @@ export function getLeaderboard(): LeaderboardRow[] {
       r.lastChange = change
       r.history.push({ draftId: match.id, change: Math.round(change), rating: Math.round(r.rating) })
       r.matches++
+      const heroGames = (r.heroes.get(p.heroId) ?? 0) + 1
+      r.heroes.set(p.heroId, heroGames)
+      if (!r.topHero || heroGames >= r.topHero.matches) r.topHero = { heroId: p.heroId, matches: heroGames }
       r.kills += p.kills
       r.deaths += p.deaths
       r.assists += p.assists
@@ -104,35 +163,21 @@ export function getLeaderboard(): LeaderboardRow[] {
     }
   }
 
-  // Quem tem perfil aparece com o nome do perfil (de qualquer uma das suas contas).
-  const ids = [...rows.values()].flatMap((r) => r.accounts)
-  if (ids.length) {
-    const profiles = db
-      .prepare(`SELECT id, username, steam_account_id FROM users WHERE steam_account_id IN (${ids.map(() => "?").join(",")})`)
-      .all(...ids) as { id: number; username: string; steam_account_id: number }[]
-    for (const u of profiles) {
-      const r = rows.get(links.main(u.steam_account_id))
-      if (r) {
-        r.name = u.username
-        r.hasProfile = true
-        r.userId = String(u.id)
-      }
-    }
-  }
+  return rows
+}
 
-  // Nome fixo definido para o jogador vale acima de tudo.
-  for (const [accountId, name] of getPlayerNames()) {
-    const r = rows.get(links.main(accountId))
-    if (r) r.name = name
-  }
-
-  return [...rows.values()]
-    .map((r) => ({ ...r, rating: Math.round(r.rating), lastChange: Math.round(r.lastChange) }))
+// Ordena: primeiro quem já tem MIN_MATCHES partidas (com posição), depois quem está em avaliação.
+function rank(rows: Map<number, LeaderboardRow>): LeaderboardRow[] {
+  const sorted = [...rows.values()]
+    .map((r) => ({ ...r, rating: Math.round(r.rating), lastChange: Math.round(r.lastChange), provisional: r.matches < MIN_MATCHES }))
     // Desempate: mais vitórias, depois melhor KDA.
     .sort(
       (a, b) =>
+        Number(a.provisional) - Number(b.provisional) ||
         b.rating - a.rating ||
         b.wins - a.wins ||
         (b.kills + b.assists) / Math.max(b.deaths, 1) - (a.kills + a.assists) / Math.max(a.deaths, 1),
     )
+  let position = 0
+  return sorted.map((r) => ({ ...r, rank: r.provisional ? null : ++position }))
 }
