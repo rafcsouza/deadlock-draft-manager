@@ -1,32 +1,12 @@
 "use client"
 
-import { startTransition, useActionState, useState } from "react"
-import { importMatchAction, verifyMatchAction, type ImportState } from "@/app/historico/actions"
+import { useState } from "react"
+import { importMatchAction, verifyMatchAction } from "@/app/historico/actions"
+import { FormStatus, useFormAction } from "@/components/form-ui"
 import { PrintImport, type HeroOption } from "@/components/print-review"
 
-type Action = (state: ImportState, form: FormData) => Promise<ImportState>
-
-// Envia pelo onSubmit para o React não limpar os campos quando o servidor devolve erro.
-function useFormAction(action: Action) {
-  const [state, dispatch, pending] = useActionState(action, {})
-  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const data = new FormData(e.currentTarget)
-    startTransition(() => dispatch(data))
-  }
-  return { state, pending, onSubmit }
-}
-
-const gradient = { background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }
-const inputClass =
+const idInputClass =
   "min-w-0 flex-1 rounded-lg border border-border bg-muted/60 px-3 py-2.5 font-mono text-sm outline-none focus:border-muted-foreground/60"
-
-function Feedback({ state, pending }: { state: ImportState; pending: boolean }) {
-  if (pending) return null
-  if (state.error) return <p role="alert" className="mt-2 text-xs text-red-300">{state.error}</p>
-  if (state.ok) return <p className="mt-2 text-xs text-green-300">{state.ok}</p>
-  return null
-}
 
 // Adiciona ao histórico uma partida que já aconteceu: pelo ID (API) ou por um print do placar.
 export function ImportMatchForm({ heroes }: { heroes: HeroOption[] }) {
@@ -71,16 +51,16 @@ function ByIdForm() {
           placeholder="ID da partida (ex.: 109513494)"
           aria-label="ID da partida"
           disabled={pending}
-          className={inputClass}
+          className={idInputClass}
         />
-        <button type="submit" disabled={pending || !matchId} className="shrink-0 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60" style={gradient}>
+        <button type="submit" disabled={pending || !matchId} className="shrink-0 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60 bg-team-gradient">
           {pending ? "Buscando..." : "Adicionar"}
         </button>
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">
         Stats completos (itens, MVP, SteamIDs) vindos da API do Deadlock. Entra no leaderboard.
       </p>
-      <Feedback state={state} pending={pending} />
+      <FormStatus state={state} pending={pending} variant="inline" />
     </form>
   )
 }
@@ -104,13 +84,13 @@ export function VerifyMatchForm({ draftId, matchId: initial }: { draftId: string
           placeholder="ID da partida"
           aria-label="ID da partida para vincular"
           disabled={pending}
-          className={inputClass}
+          className={idInputClass}
         />
-        <button type="submit" disabled={pending || !matchId} className="shrink-0 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60" style={gradient}>
+        <button type="submit" disabled={pending || !matchId} className="shrink-0 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60 bg-team-gradient">
           {pending ? "Vinculando..." : "Vincular pela API"}
         </button>
       </div>
-      <Feedback state={state} pending={pending} />
+      <FormStatus state={state} pending={pending} variant="inline" />
     </form>
   )
 }

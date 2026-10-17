@@ -35,9 +35,9 @@ type Row = {
   stats: string
 }
 
-// Partidas confirmadas, da mais recente para a mais antiga.
-export function listDrafts(limit = 50): SavedDraft[] {
-  const rows = db.prepare("SELECT * FROM drafts ORDER BY played_at DESC LIMIT ?").all(limit) as Row[]
+// Todas as partidas do histórico (inclusive as pendentes, de print), da mais recente para a mais antiga.
+export function listDrafts(): SavedDraft[] {
+  const rows = db.prepare("SELECT * FROM drafts ORDER BY played_at DESC").all() as Row[]
   return rows.map((r) => ({
     id: r.id,
     source: r.source,
@@ -53,3 +53,6 @@ export function listDrafts(limit = 50): SavedDraft[] {
     stats: JSON.parse(r.stats),
   }))
 }
+
+// Só as confirmadas pela API (as que contam no leaderboard), da mais recente para a mais antiga.
+export const listVerifiedMatches = () => listDrafts().filter((m) => m.verified)

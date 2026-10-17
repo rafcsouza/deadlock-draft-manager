@@ -1,10 +1,9 @@
 import Link from "next/link"
-import { TEAM_NAMES, type ResultPlayer, type Team } from "@/lib/draft-rules"
+import { TEAM_COLORS, TEAM_NAMES, type ResultPlayer, type Team } from "@/lib/draft-rules"
 import { formatSouls, playerName } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
 import type { ItemSlot, ShopItem } from "@/lib/items"
 
-const TEAM_COLORS: Record<Team, string> = { a: "var(--team-a)", b: "var(--team-b)" }
 const SLOT_COLORS: Record<ItemSlot, string> = { weapon: "#d08c3a", vitality: "#6fa83f", spirit: "#9b6ad6" }
 const SLOT_ORDER: ItemSlot[] = ["weapon", "vitality", "spirit"]
 

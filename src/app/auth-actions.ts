@@ -9,15 +9,14 @@ import {
   hashSecret,
   isLocked,
   normalizeAnswer,
-  PASSWORD_MIN,
   registerFailure,
   safeNext,
-  USERNAME_PATTERN,
   validAvatar,
   verifySecret,
 } from "@/lib/auth"
+import { formText as text, newPasswordError, readSteamAccount, usernameError } from "@/lib/account-form"
 import { db } from "@/lib/db"
-import { parseSteamId } from "@/lib/steam"
+import { errorMessage } from "@/lib/format"
 
 export type FormState = {
   error?: string
@@ -26,44 +25,28 @@ export type FormState = {
   username?: string
 }
 
-const text = (form: FormData, name: string) => String(form.get(name) ?? "").trim()
-
 const LOCKED_MESSAGE = "Muitas tentativas erradas. Espere 5 minutos e tente de novo."
 
 export async function signUp(_: FormState, form: FormData): Promise<FormState> {
   const username = text(form, "username")
-  const password = String(form.get("password") ?? "")
-  const confirm = String(form.get("confirm") ?? "")
   const question = text(form, "question") === "custom" ? text(form, "customQuestion") : text(form, "question")
   const answer = normalizeAnswer(text(form, "answer"))
   const avatar = text(form, "avatar")
 
-  if (!USERNAME_PATTERN.test(username)) {
-    return { error: "O nome de usuário deve ter de 3 a 20 caracteres: letras, números, ponto, hífen ou _." }
-  }
-  if (password.length < PASSWORD_MIN) return { error: `A senha deve ter pelo menos ${PASSWORD_MIN} caracteres.` }
-  if (password !== confirm) return { error: "As senhas não conferem." }
+  const error = usernameError(username) ?? newPasswordError(form)
+  if (error) return { error }
   if (question.length < 5 || question.length > 120) return { error: "Escolha ou escreva uma pergunta de segurança." }
   if (answer.length < 2) return { error: "Escreva a resposta da pergunta de segurança." }
   if (avatar && !validAvatar(avatar)) return { error: "Não foi possível usar essa imagem. Tente outra." }
-  // SteamID é opcional: serve para ligar o perfil aos stats das partidas.
-  const steamText = text(form, "steamId")
-  const steam = steamText ? parseSteamId(steamText) : null
-  if (steam && "error" in steam) return { error: steam.error }
-  const steamAccountId = steam ? steam.accountId : null
-
-  const taken = db.prepare("SELECT 1 FROM users WHERE username = ?").get(username)
-  if (taken) return { error: "Esse nome de usuário já está em uso." }
-  if (steamAccountId !== null && db.prepare("SELECT 1 FROM users WHERE steam_account_id = ?").get(steamAccountId)) {
-    return { error: "Essa conta Steam já está ligada a outro perfil." }
-  }
+  const steam = readSteamAccount(form)
+  if ("error" in steam) return steam
 
   const result = db
     .prepare(
       `INSERT INTO users (username, password_hash, security_question, security_answer_hash, avatar, steam_account_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     )
-    .run(username, await hashSecret(password), question, await hashSecret(answer), avatar || null, steamAccountId, Date.now())
+    .run(username, await hashSecret(String(form.get("password"))), question, await hashSecret(answer), avatar || null, steam.accountId, Date.now())
 
   await createSession(Number(result.lastInsertRowid))
   redirect(safeNext(form.get("next")))
@@ -90,7 +73,7 @@ export async function signIn(_: FormState, form: FormData): Promise<FormState> {
 }
 
 // Recuperação em duas etapas: 1) achar a pergunta do usuário; 2) responder e definir nova senha.
-export async function recoverPassword(state: FormState, form: FormData): Promise<FormState> {
+export async function recoverPassword(_: FormState, form: FormData): Promise<FormState> {
   const username = text(form, "username")
   const user = db
     // Visitantes não têm senha para recuperar.
@@ -104,10 +87,8 @@ export async function recoverPassword(state: FormState, form: FormData): Promise
   const key = `recover:${username.toLowerCase()}`
   if (isLocked(key)) return { ...keep, error: LOCKED_MESSAGE }
 
-  const password = String(form.get("password") ?? "")
-  const confirm = String(form.get("confirm") ?? "")
-  if (password.length < PASSWORD_MIN) return { ...keep, error: `A senha deve ter pelo menos ${PASSWORD_MIN} caracteres.` }
-  if (password !== confirm) return { ...keep, error: "As senhas não conferem." }
+  const passwordError = newPasswordError(form)
+  if (passwordError) return { ...keep, error: passwordError }
 
   if (!(await verifySecret(normalizeAnswer(text(form, "answer")), user.security_answer_hash))) {
     registerFailure(key)
@@ -115,7 +96,7 @@ export async function recoverPassword(state: FormState, form: FormData): Promise
   }
 
   clearFailures(key)
-  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashSecret(password), user.id)
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashSecret(String(form.get("password"))), user.id)
   // Senha trocada: encerra as sessões antigas e entra com uma nova.
   db.prepare("DELETE FROM sessions WHERE user_id = ?").run(user.id)
   await createSession(user.id)
@@ -126,7 +107,7 @@ export async function signInAsGuest(_: FormState, form: FormData): Promise<FormS
   try {
     await createGuest(text(form, "nickname"))
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Não foi possível entrar como visitante." }
+    return { error: errorMessage(e, "Não foi possível entrar como visitante.") }
   }
   redirect(safeNext(form.get("next")))
 }

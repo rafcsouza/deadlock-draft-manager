@@ -127,7 +127,7 @@ async function crop(img: Image, box: readonly number[], mode: Mode, scale: numbe
 }
 
 // "68 mil" / "68k" → 68000; "4,5 mil" / "4.5k" → 4500; "806" → 806; "nil"/"il" (mil mal lido) também.
-export function parseStat(text: string): number | null {
+function parseStat(text: string): number | null {
   const t = text.toLowerCase().replace(/\s+/g, " ")
   const m = t.match(/(\d+)(?:[.,](\d))?/)
   if (!m) return null
@@ -250,14 +250,4 @@ export async function readScoreboard(image: Buffer): Promise<OcrScoreboard> {
   } finally {
     clearTimeout(timer)
   }
-}
-
-// Encerra o leitor de OCR (usado em scripts; no servidor ele fica aberto para os próximos prints).
-export async function closeOcr() {
-  if (!workerPromise) return
-  const worker = await workerPromise
-  workerPromise = null
-  currentChars = null
-  currentPsm = null
-  await worker.terminate()
 }

@@ -1,59 +1,9 @@
 "use client"
 
-import { startTransition, useActionState } from "react"
-import { changePassword, updateProfile, type ProfileState } from "@/app/perfil/actions"
+import { changePassword, updateProfile } from "@/app/perfil/actions"
 import { AvatarPicker } from "@/components/avatar-picker"
+import { Field, FormStatus, inputClass, SubmitButton, useFormAction } from "@/components/form-ui"
 import { KEEP_AVATAR } from "@/lib/profile-form"
-
-const inputClass =
-  "w-full rounded-lg border border-border bg-muted/60 px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-muted-foreground/60"
-const gradient = { background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }
-
-// Envia pelo onSubmit para o React não limpar os campos quando o servidor devolve erro.
-function useFormAction(fn: (state: ProfileState, form: FormData) => Promise<ProfileState>) {
-  const [state, dispatch, pending] = useActionState(fn, {})
-  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    const data = new FormData(e.currentTarget)
-    startTransition(() => dispatch(data))
-  }
-  return { state, onSubmit, pending }
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block space-y-1.5 text-left">
-      <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">{label}</span>
-      {children}
-    </label>
-  )
-}
-
-function Feedback({ state, pending }: { state: ProfileState; pending: boolean }) {
-  if (pending) return null
-  if (state.error) {
-    return (
-      <p role="alert" className="rounded-lg border border-red-600/40 bg-red-600/10 px-3 py-2 text-left text-xs text-red-300">
-        {state.error}
-      </p>
-    )
-  }
-  if (state.ok) return <p className="text-left text-xs text-green-300">{state.ok}</p>
-  return null
-}
-
-function Submit({ pending, children }: { pending: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="h-11 w-full rounded-xl text-sm font-bold text-white shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-      style={gradient}
-    >
-      {pending ? "Salvando..." : children}
-    </button>
-  )
-}
 
 export function EditProfileForm({
   username,
@@ -91,8 +41,8 @@ export function EditProfileForm({
         </a>
         . Deixe vazio para desligar.
       </p>
-      <Feedback state={state} pending={pending} />
-      <Submit pending={pending}>Salvar perfil</Submit>
+      <FormStatus state={state} pending={pending} />
+      <SubmitButton pending={pending} pendingText="Salvando...">Salvar perfil</SubmitButton>
     </form>
   )
 }
@@ -112,8 +62,8 @@ export function ChangePasswordForm() {
           <input name="confirm" type="password" required minLength={6} autoComplete="new-password" className={inputClass} />
         </Field>
       </div>
-      <Feedback state={state} pending={pending} />
-      <Submit pending={pending}>Trocar senha</Submit>
+      <FormStatus state={state} pending={pending} />
+      <SubmitButton pending={pending} pendingText="Salvando...">Trocar senha</SubmitButton>
     </form>
   )
 }

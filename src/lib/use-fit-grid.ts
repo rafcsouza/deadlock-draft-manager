@@ -7,7 +7,7 @@ export type FitGrid = { columns: number; width: number; height: number }
 // Calcula colunas e tamanho dos cards para que `count` cards (proporção
 // largura/altura `ratio`) caibam inteiros no elemento, sem rolagem,
 // escolhendo o maior tamanho de card possível.
-export function fitGrid(count: number, boxW: number, boxH: number, ratio: number, gap: number): FitGrid {
+function fitGrid(count: number, boxW: number, boxH: number, ratio: number, gap: number): FitGrid {
   let best: FitGrid = { columns: 1, width: 0, height: 0 }
   for (let columns = 1; columns <= count; columns++) {
     const rows = Math.ceil(count / columns)

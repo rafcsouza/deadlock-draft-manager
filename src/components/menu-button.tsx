@@ -12,10 +12,9 @@ export function MenuButton({ href, children, primary }: Props) {
       href={href}
       className={`group flex h-12 w-full items-center justify-between rounded-xl px-5 text-sm font-bold transition-all hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${
         primary
-          ? "text-white shadow-lg shadow-black/40"
+          ? "bg-team-gradient text-white shadow-lg shadow-black/40"
           : "border border-border bg-muted/60 text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground"
       }`}
-      style={primary ? { background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" } : undefined}
     >
       {children}
       <svg className="h-4 w-4 transition-transform group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

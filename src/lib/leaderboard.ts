@@ -1,7 +1,6 @@
 import "server-only"
-import { db } from "@/lib/db"
-import { listDrafts } from "@/lib/drafts"
-import { getAccountLinks, getPlayerNames } from "@/lib/players"
+import { listVerifiedMatches, type SavedDraft } from "@/lib/drafts"
+import { getAccountLinks, getPlayerNames, getProfilesBySteam } from "@/lib/players"
 
 // Pontuação (recalculada do histórico inteiro, em ordem cronológica). Todo mundo começa com 0
 // e só ganha pontos: vitória vale mais, derrota vale menos, e há bônus por sequência e MVP.
@@ -49,13 +48,9 @@ export type LeaderboardRow = {
   rankChange: number | null
 }
 
-type Match = ReturnType<typeof listDrafts>[number]
-
 export function getLeaderboard(): LeaderboardRow[] {
   // Partidas de print ainda não confirmadas pela API não contam (os jogadores não têm SteamID).
-  const matches = listDrafts(100000)
-    .filter((m) => m.verified)
-    .sort((a, b) => a.playedAt - b.playedAt)
+  const matches = listVerifiedMatches().reverse()
   const links = getAccountLinks()
   const rows = aggregate(matches, links)
 
@@ -65,18 +60,12 @@ export function getLeaderboard(): LeaderboardRow[] {
   )
 
   // Quem tem perfil aparece com o nome do perfil (de qualquer uma das suas contas).
-  const ids = [...rows.values()].flatMap((r) => r.accounts)
-  if (ids.length) {
-    const profiles = db
-      .prepare(`SELECT id, username, steam_account_id FROM users WHERE steam_account_id IN (${ids.map(() => "?").join(",")})`)
-      .all(...ids) as { id: number; username: string; steam_account_id: number }[]
-    for (const u of profiles) {
-      const r = rows.get(links.main(u.steam_account_id))
-      if (r) {
-        r.name = u.username
-        r.hasProfile = true
-        r.userId = String(u.id)
-      }
+  for (const [steamId, u] of getProfilesBySteam()) {
+    const r = rows.get(links.main(steamId))
+    if (r) {
+      r.name = u.username
+      r.hasProfile = true
+      r.userId = String(u.id)
     }
   }
 
@@ -93,7 +82,7 @@ export function getLeaderboard(): LeaderboardRow[] {
 }
 
 // Soma as partidas (em ordem cronológica) por pessoa.
-function aggregate(matches: Match[], links: ReturnType<typeof getAccountLinks>): Map<number, LeaderboardRow> {
+function aggregate(matches: SavedDraft[], links: ReturnType<typeof getAccountLinks>): Map<number, LeaderboardRow> {
   const rows = new Map<number, LeaderboardRow>()
 
   // Contas ligadas somam na conta principal da pessoa.

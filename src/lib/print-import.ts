@@ -1,5 +1,6 @@
 import "server-only"
 import type { ResultPlayer, Team } from "@/lib/draft-rules"
+import { stripAccents } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
 import { PRINT_STATS, type PrintPlayer, type PrintReview } from "@/lib/print-types"
 import { readScoreboard } from "@/lib/scoreboard-ocr"
@@ -8,9 +9,7 @@ const MAX_IMAGE_BYTES = 12 * 1024 * 1024
 const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"]
 
 const normalize = (s: string) =>
-  s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+  stripAccents(s)
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
 

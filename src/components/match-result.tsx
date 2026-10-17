@@ -2,12 +2,9 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { TEAM_NAMES, type MatchResultView, type ResultPlayer, type RoomAction, type Team } from "@/lib/draft-rules"
+import { TEAM_COLORS, TEAM_NAMES, type MatchResultView, type ResultPlayer, type RoomAction, type Team } from "@/lib/draft-rules"
 import { formatDuration, formatSouls, playerName } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
-
-const TEAM_COLORS: Record<Team, string> = { a: "var(--team-a)", b: "var(--team-b)" }
-
 
 // Etapa depois do draft: informar o ID da partida, conferir os stats e confirmar.
 export function MatchResultPanel({
@@ -69,8 +66,7 @@ export function MatchResultPanel({
             <button
               type="submit"
               disabled={fetching || !matchId}
-              className="shrink-0 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60"
-              style={{ background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }}
+              className="shrink-0 rounded-lg px-4 text-sm font-bold text-white disabled:opacity-60 bg-team-gradient"
             >
               {fetching ? "Buscando..." : "Buscar stats"}
             </button>
@@ -125,8 +121,7 @@ export function MatchResultPanel({
           </button>
           <button
             onClick={() => send({ type: "confirmResult" })}
-            className="rounded-lg px-5 py-2 text-sm font-bold text-white"
-            style={{ background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }}
+            className="rounded-lg px-5 py-2 text-sm font-bold text-white bg-team-gradient"
           >
             Confirmar e salvar no histórico
           </button>
@@ -138,7 +133,7 @@ export function MatchResultPanel({
   )
 }
 
-export function StatsTable({
+function StatsTable({
   team,
   players,
   winner,

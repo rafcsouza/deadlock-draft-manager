@@ -3,18 +3,15 @@ import { notFound, redirect } from "next/navigation"
 import { Logo } from "@/components/logo"
 import { requireUser } from "@/lib/auth"
 import { avatarUrl } from "@/lib/avatar"
-import { db } from "@/lib/db"
 import { TEAM_NAMES } from "@/lib/draft-rules"
-import { listDrafts } from "@/lib/drafts"
-import { formatDuration, formatSouls } from "@/lib/format"
+import { listVerifiedMatches } from "@/lib/drafts"
+import { formatDate, formatDuration, formatSouls } from "@/lib/format"
 import { getHeroes } from "@/lib/heroes"
 import { getLeaderboard, MIN_MATCHES } from "@/lib/leaderboard"
-import { getAccountLinks } from "@/lib/players"
+import { getAccountLinks, getProfilesBySteam } from "@/lib/players"
 import { toSteam64 } from "@/lib/steam"
 
 export const metadata = { title: "Perfil do jogador" }
-
-const dateFormat = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeZone: "America/Sao_Paulo" })
 
 export default async function PlayerPage({ params }: { params: Promise<{ accountId: string }> }) {
   const { accountId: raw } = await params
@@ -31,18 +28,13 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
   if (!row) notFound()
 
   const heroes = new Map((await getHeroes()).map((h) => [h.id, h]))
-  const profile = db
-    .prepare(`SELECT id, avatar FROM users WHERE steam_account_id IN (${row.accounts.map(() => "?").join(",")})`)
-    .get(...row.accounts) as
-    | { id: number; avatar: string | null }
-    | undefined
+  const profiles = getProfilesBySteam()
+  const profile = row.accounts.map((id) => profiles.get(id)).find((u) => u !== undefined)
   const avatar = profile ? avatarUrl(profile.id, profile.avatar) : null
 
   // Partidas do jogador (só as confirmadas pela API, as mesmas do leaderboard), da mais recente para a mais antiga.
   const changeByDraft = new Map(row.history.map((h) => [h.draftId, h.change]))
-  const games = listDrafts(100000)
-    .filter((m) => m.verified)
-    .flatMap((m) => {
+  const games = listVerifiedMatches().flatMap((m) => {
       const me = m.stats.find((p) => row.accounts.includes(p.accountId))
       return me ? [{ match: m, me, won: me.team === m.winner }] : []
     })
@@ -162,7 +154,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
                 const change = changeByDraft.get(match.id) ?? 0
                 return (
                   <tr key={match.id} className="border-t border-border/60 [&>td]:px-2 [&>td]:py-1.5">
-                    <td className="text-xs text-muted-foreground">{dateFormat.format(match.playedAt)}</td>
+                    <td className="text-xs text-muted-foreground">{formatDate(match.playedAt)}</td>
                     <td>
                       <span className="flex items-center gap-2">
                         {hero && (

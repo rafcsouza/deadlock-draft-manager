@@ -5,6 +5,7 @@ import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { cache } from "react"
 import { db } from "@/lib/db"
+import { stripAccents } from "@/lib/format"
 
 const scryptAsync = promisify(scrypt) as (secret: string, salt: string, keylen: number) => Promise<Buffer>
 
@@ -32,9 +33,7 @@ export async function verifySecret(secret: string, stored: string) {
 
 // "  São Paulo " e "sao paulo" contam como a mesma resposta.
 export function normalizeAnswer(answer: string) {
-  return answer
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+  return stripAccents(answer)
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim()

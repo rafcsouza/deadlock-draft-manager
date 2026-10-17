@@ -1,12 +1,14 @@
 import "server-only"
 import { randomUUID } from "node:crypto"
-import { matchExists, saveMatch, toResult } from "@/lib/match-results"
+import type { User } from "@/lib/auth"
+import { avatarUrl } from "@/lib/avatar"
+import { errorMessage } from "@/lib/format"
+import { matchExists, parseMatchId, saveMatch, toResult } from "@/lib/match-results"
 import { fetchMatchStats } from "@/lib/match-stats"
 import {
   buildPlayerSteps,
   buildSteps,
   COIN_TOTAL_MS,
-  TEAM_SIZE,
   TOTAL_STEPS,
   TURN_MAX,
   TURN_MIN,
@@ -25,6 +27,14 @@ import {
 // depois que o draft termina, alguém informa o ID da partida e o resultado é confirmado.
 
 type PlayerInfo = { id: string; name: string; avatar: string | null; guest?: boolean }
+
+// Jogador da sala a partir do usuário logado.
+export const roomPlayer = (user: User): PlayerInfo => ({
+  id: String(user.id),
+  name: user.username,
+  avatar: avatarUrl(user.id, user.avatar),
+  guest: user.isGuest,
+})
 type Connection = { userId: string; send: (data: string) => void }
 
 type Room = {
@@ -116,7 +126,6 @@ const teamOf = (room: Room, userId: string): Team | null =>
   room.teams.a.includes(userId) ? "a" : room.teams.b.includes(userId) ? "b" : null
 
 const captainOf = (room: Room, team: Team) => room.teams[team][0] ?? null
-const isCaptain = (room: Room, userId: string) => captainOf(room, "a") === userId || captainOf(room, "b") === userId
 const isBot = (room: Room, userId: string) => room.bots.has(userId)
 
 // O jogador age por si; o anfitrião também age pelos jogadores fictícios.
@@ -138,8 +147,12 @@ const other = (team: Team): Team => (team === "a" ? "b" : "a")
 const started = (room: Room) => room.playerFirst !== null
 // Escolha de jogadores em andamento.
 const pickingPlayers = (room: Room) => started(room) && !room.playersDone
-const lobbyIds = (room: Room) => [...onlineIds(room)].filter((id) => !teamOf(room, id))
+const lobbyIds = (room: Room, online = onlineIds(room)) => [...online].filter((id) => !teamOf(room, id))
 const finished = (room: Room) => room.actions.length === TOTAL_STEPS
+// A moeda já caiu (a animação dela terminou): as escolhas estão liberadas.
+const coinLanded = (room: Room) => Date.now() >= (room.coinAt ?? 0) + COIN_TOTAL_MS
+// Prazo do primeiro turno de heróis: conta a partir de agora ou de quando a moeda cair, o que vier depois.
+const firstTurnDeadline = (room: Room) => Math.max(Date.now(), (room.coinAt ?? 0) + COIN_TOTAL_MS) + room.turnSeconds * 1000
 
 function onlineIds(room: Room) {
   const now = Date.now()
@@ -166,7 +179,7 @@ function viewFor(room: Room, userId: string): RoomView {
     serverNow: Date.now(),
     hostId: room.hostId,
     host: room.hostId ? player(room.hostId) : null,
-    lobby: [...online].filter((id) => !teamOf(room, id)).map(player),
+    lobby: lobbyIds(room, online).map(player),
     teams: { a: room.teams.a.map(player), b: room.teams.b.map(player) },
     playerFirst: room.playerFirst,
     playerPicks: room.playerPicks,
@@ -193,29 +206,32 @@ function broadcast(room: Room) {
 
 // Alternativa à conexão ao vivo: o navegador pergunta o estado a cada segundo.
 // Quem para de perguntar sai da sala de espera depois de alguns segundos.
-export function pollRoom(code: string, heroIds: number[], user: PlayerInfo) {
+// Registra o jogador na sala; quem entra primeiro vira o anfitrião.
+function enter(code: string, heroIds: number[], user: PlayerInfo) {
   const room = getRoom(code, heroIds)
-  const isNew = !room.pollers.has(user.id) || Date.now() - (room.pollers.get(user.id) ?? 0) >= POLL_ONLINE_MS
   room.users.set(user.id, user)
-  room.pollers.set(user.id, Date.now())
   room.hostId ??= user.id
   room.emptySince = null
+  return room
+}
+
+export function pollRoom(code: string, heroIds: number[], user: PlayerInfo) {
+  const room = enter(code, heroIds, user)
+  const isNew = Date.now() - (room.pollers.get(user.id) ?? 0) >= POLL_ONLINE_MS
+  room.pollers.set(user.id, Date.now())
   if (isNew) broadcast(room)
   return viewFor(room, user.id)
 }
 
 export function joinRoom(code: string, heroIds: number[], user: PlayerInfo, send: (data: string) => void) {
-  const room = getRoom(code, heroIds)
+  const room = enter(code, heroIds, user)
   const connId = randomUUID()
-  room.users.set(user.id, user)
   room.connections.set(connId, { userId: user.id, send })
-  room.hostId ??= user.id
-  room.emptySince = null
   broadcast(room)
 
+  // A sala vazia é removida depois pela limpeza periódica.
   return function leave() {
     room.connections.delete(connId)
-    if (room.connections.size === 0 && onlineIds(room).size === room.bots.size) room.emptySince = Date.now()
     broadcast(room)
   }
 }
@@ -261,7 +277,7 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
 
     case "pickPlayer": {
       if (!pickingPlayers(room)) return "Não é hora de escolher jogadores."
-      if (Date.now() < (room.coinAt ?? 0) + COIN_TOTAL_MS) return "Espere a moeda cair."
+      if (!coinLanded(room)) return "Espere a moeda cair."
       const team = buildPlayerSteps(room.playerFirst!)[room.playerPicks]
       if (!actsForTeam(room, userId, team)) return "Só o capitão da vez pode escolher."
       const playerId = String(action.playerId)
@@ -284,20 +300,20 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
     case "choose": {
       const step = currentStep(room)
       if (!step) return "Não é hora de escolher."
-      if (Date.now() < (room.coinAt ?? 0) + COIN_TOTAL_MS) return "Espere a moeda cair."
+      if (!coinLanded(room)) return "Espere a moeda cair."
       if (!actsForTeam(room, userId, step.team)) return "Só o capitão da vez pode escolher."
       return choose(room, Number(action.heroId))
     }
 
     case "turnSeconds": {
-      if (room.hostId !== userId && !isCaptain(room, userId)) return "Só o anfitrião ou os capitães mudam o tempo."
+      if (!canManage(room, userId)) return "Só o anfitrião ou os capitães mudam o tempo."
       if (room.actions.length > 0) return "O draft já começou; o tempo não pode mais ser alterado."
       const seconds = Math.round(Number(action.seconds) / TURN_STEP) * TURN_STEP
       if (!(seconds >= TURN_MIN && seconds <= TURN_MAX)) return "Tempo inválido."
       room.turnSeconds = seconds
       // Draft de heróis já liberado, mas ninguém escolheu ainda: o primeiro turno usa o novo tempo.
       if (room.first) {
-        room.deadline = Math.max(Date.now(), (room.coinAt ?? 0) + COIN_TOTAL_MS) + seconds * 1000
+        room.deadline = firstTurnDeadline(room)
         schedule(room)
       }
       return null
@@ -305,7 +321,7 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
 
     case "restart": {
       if (!finished(room)) return "O draft ainda não terminou."
-      if (room.hostId !== userId && !isCaptain(room, userId)) return "Só o anfitrião ou os capitães podem reiniciar."
+      if (!canManage(room, userId)) return "Só o anfitrião ou os capitães podem reiniciar."
       // Volta para a fase de capitães, mantendo os capitães; os demais voltam para a sala de espera.
       room.teams = { a: room.teams.a.slice(0, 1), b: room.teams.b.slice(0, 1) }
       room.playerFirst = null
@@ -348,9 +364,7 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
       if (!room.result) return "Busque a partida pelo ID antes de confirmar."
       if (room.savedDraftId) return "Essa partida já foi salva no histórico."
       if (!canManage(room, userId)) return "Só o anfitrião ou os capitães podem confirmar o resultado."
-      if (matchExists(room.result.matchId)) {
-        return "Essa partida já foi registrada no histórico."
-      }
+      if (matchExists(room.result.matchId)) return "Essa partida já foi registrada no histórico."
       room.savedDraftId = saveDraft(room, room.result)
       return null
     }
@@ -391,7 +405,7 @@ function move(room: Room, actorId: string, playerId: string, to: Team | "lobby")
 function finishPlayerPicks(room: Room) {
   room.playersDone = true
   room.first = other(room.playerFirst!)
-  room.deadline = Math.max(Date.now(), (room.coinAt ?? 0) + COIN_TOTAL_MS) + room.turnSeconds * 1000
+  room.deadline = firstTurnDeadline(room)
   schedule(room)
 }
 
@@ -438,8 +452,8 @@ export async function submitMatch(code: string, userId: string, rawId: string): 
   if (room.savedDraftId) return "Essa partida já foi salva no histórico."
   if (!canManage(room, userId)) return "Só o anfitrião ou os capitães podem informar a partida."
   if (room.fetchingResult) return "Já estamos buscando uma partida."
-  const matchId = Number(String(rawId).trim())
-  if (!Number.isSafeInteger(matchId) || matchId <= 0) return "ID da partida inválido."
+  const matchId = parseMatchId(rawId)
+  if (!matchId) return "ID da partida inválido."
   if (matchExists(matchId)) return "Essa partida já foi registrada no histórico."
 
   room.fetchingResult = true
@@ -452,7 +466,7 @@ export async function submitMatch(code: string, userId: string, rawId: string): 
     room.result = buildResult(room, stats)
     return null
   } catch (e) {
-    return e instanceof Error ? e.message : "Não foi possível buscar a partida."
+    return errorMessage(e, "Não foi possível buscar a partida.")
   } finally {
     room.fetchingResult = false
     broadcast(room)

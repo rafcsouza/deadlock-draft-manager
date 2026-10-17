@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { readPrintAction, savePrintAction } from "@/app/historico/actions"
-import { TEAM_NAMES, type Team } from "@/lib/draft-rules"
+import { TEAM_COLORS, TEAM_NAMES, type Team } from "@/lib/draft-rules"
 import { formatDuration } from "@/lib/format"
 import { PRINT_STATS, type PrintPlayer, type PrintReview } from "@/lib/print-types"
 
@@ -17,8 +17,6 @@ const STAT_LABELS: Record<(typeof PRINT_STATS)[number], string> = {
   objDamage: "Dano obj.",
   healing: "Cura",
 }
-const TEAM_COLORS: Record<Team, string> = { a: "var(--team-a)", b: "var(--team-b)" }
-const gradient = { background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }
 const cellInput =
   "w-full rounded border border-border bg-muted/60 px-1.5 py-1 font-mono text-xs tabular-nums outline-none focus:border-muted-foreground/60"
 
@@ -108,7 +106,7 @@ export function PrintImport({ heroes }: { heroes: HeroOption[] }) {
           Lido no próprio servidor, sem custo e sem internet. Você revisa os valores antes de salvar. A partida fica
           pendente e fora do leaderboard até ser vinculada pela API.
         </p>
-        <button onClick={read} disabled={!file || busy !== null} className="shrink-0 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-60" style={gradient}>
+        <button onClick={read} disabled={!file || busy !== null} className="shrink-0 rounded-lg px-4 py-2 text-sm font-bold text-white disabled:opacity-60 bg-team-gradient">
           {busy === "read" ? "Lendo print..." : "Ler print"}
         </button>
       </div>
@@ -266,7 +264,7 @@ function ReviewEditor({
         <button onClick={onCancel} disabled={saving} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:text-foreground">
           Cancelar
         </button>
-        <button onClick={onSave} disabled={saving} className="rounded-lg px-5 py-2 text-sm font-bold text-white disabled:opacity-60" style={gradient}>
+        <button onClick={onSave} disabled={saving} className="rounded-lg px-5 py-2 text-sm font-bold text-white disabled:opacity-60 bg-team-gradient">
           {saving ? "Salvando..." : "Salvar no histórico (pendente)"}
         </button>
       </div>

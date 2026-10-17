@@ -1,8 +1,7 @@
-import { avatarUrl } from "@/lib/avatar"
 import { getCurrentUser } from "@/lib/auth"
 import { ROOM_CODE_PATTERN, type RoomAction } from "@/lib/draft-rules"
 import { getHeroes } from "@/lib/heroes"
-import { applyAction, pollRoom, submitMatch } from "@/lib/room-store"
+import { applyAction, pollRoom, roomPlayer, submitMatch } from "@/lib/room-store"
 
 export const dynamic = "force-dynamic"
 
@@ -13,7 +12,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ code: stri
   const user = await getCurrentUser()
   if (!user) return Response.json({ error: "Faça login." }, { status: 401 })
   const heroIds = (await getHeroes()).map((h) => h.id)
-  const view = pollRoom(code, heroIds, { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar), guest: user.isGuest })
+  const view = pollRoom(code, heroIds, roomPlayer(user))
   return Response.json(view, { headers: { "Cache-Control": "no-store" } })
 }
 
@@ -21,6 +20,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ code: stri
 // as permissões e, se der certo, avisa todos pelo canal ao vivo.
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
+  if (!ROOM_CODE_PATTERN.test(code)) return Response.json({ error: "Sala inválida." }, { status: 404 })
   const user = await getCurrentUser()
   if (!user) return Response.json({ error: "Faça login." }, { status: 401 })
 

@@ -99,7 +99,7 @@ export function EmptySlot({ captain, onJoin }: { captain?: boolean; onJoin?: () 
   )
 }
 
-export function Crown({ className }: { className?: string }) {
+function Crown({ className }: { className?: string }) {
   return (
     <svg className={`text-yellow-400 drop-shadow ${className}`} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M3 7l4.5 4L12 4l4.5 7L21 7l-2 12H5L3 7z" />

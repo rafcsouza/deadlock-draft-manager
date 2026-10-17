@@ -45,6 +45,11 @@
   }
 }
 
+/* Degradê dos dois times (botões principais). */
+.bg-team-gradient {
+  background: linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%);
+}
+
 /* Borda pulsando na área de heróis quando é a sua vez (a cor vem de --turn-color). */
 .turn-glow {
   border-color: var(--turn-color);

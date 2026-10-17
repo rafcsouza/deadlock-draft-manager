@@ -1,6 +1,6 @@
 // Tela com o fundo temático (grade + brilho dos dois times) e um card central
 // com a faixa dos times e ornamentos art déco. Usada na home e nas telas de conta.
-export function ThemedCard({ children, square }: { children: React.ReactNode; square?: boolean }) {
+export function ThemedCard({ children }: { children: React.ReactNode }) {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
       <div className="bg-grid pointer-events-none absolute inset-0" />
@@ -14,9 +14,7 @@ export function ThemedCard({ children, square }: { children: React.ReactNode; sq
       />
 
       <div
-        className={`relative flex w-full max-w-sm flex-col items-center justify-center gap-7 rounded-2xl border border-border bg-card/80 p-10 text-center shadow-2xl shadow-black/60 backdrop-blur ${
-          square ? "aspect-square" : ""
-        }`}
+        className="relative flex w-full max-w-sm flex-col items-center justify-center gap-7 rounded-2xl border border-border bg-card/80 p-10 text-center shadow-2xl shadow-black/60 backdrop-blur"
       >
         {/* Faixa dividida entre os dois times */}
         <div className="absolute inset-x-0 top-0 flex h-1 overflow-hidden rounded-t-2xl">

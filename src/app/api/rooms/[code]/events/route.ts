@@ -1,8 +1,7 @@
-import { avatarUrl } from "@/lib/avatar"
 import { getCurrentUser } from "@/lib/auth"
 import { ROOM_CODE_PATTERN } from "@/lib/draft-rules"
 import { getHeroes } from "@/lib/heroes"
-import { joinRoom } from "@/lib/room-store"
+import { joinRoom, roomPlayer } from "@/lib/room-store"
 
 export const dynamic = "force-dynamic"
 
@@ -28,12 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
         }
       }
       const send = (data: string) => write(`data: ${data}\n\n`)
-      const leave = joinRoom(
-        code,
-        heroIds,
-        { id: String(user.id), name: user.username, avatar: avatarUrl(user.id, user.avatar), guest: user.isGuest },
-        send,
-      )
+      const leave = joinRoom(code, heroIds, roomPlayer(user), send)
       // Comentário SSE periódico (ignorado pelo navegador) para proxies não fecharem a conexão parada.
       const heartbeat = setInterval(() => write(": ping\n\n"), 15000)
       let closed = false

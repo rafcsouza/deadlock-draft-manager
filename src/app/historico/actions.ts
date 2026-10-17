@@ -3,23 +3,17 @@
 import { revalidatePath } from "next/cache"
 import { getCurrentUser } from "@/lib/auth"
 import { getHeroes } from "@/lib/heroes"
-import { importMatch, savePrintMatch, verifyMatch } from "@/lib/match-results"
+import { errorMessage as message } from "@/lib/format"
+import { importMatch, parseMatchId, savePrintMatch, verifyMatch } from "@/lib/match-results"
 import { readPrint, reviewToPlayers } from "@/lib/print-import"
 import type { PrintReview } from "@/lib/print-types"
 
 export type ImportState = { error?: string; ok?: string }
 
-const parseMatchId = (value: FormDataEntryValue | null) => {
-  const id = Number(String(value ?? "").trim())
-  return Number.isSafeInteger(id) && id > 0 ? id : null
-}
-
 const refresh = () => {
   revalidatePath("/historico")
   revalidatePath("/leaderboards")
 }
-
-const message = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback)
 
 export async function importMatchAction(_: ImportState, form: FormData): Promise<ImportState> {
   if (!(await getCurrentUser())) return { error: "Faça login." }

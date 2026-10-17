@@ -12,6 +12,7 @@ import {
   buildSteps,
   COIN_TOTAL_MS,
   slotsFor,
+  TEAM_COLORS,
   TEAM_NAMES,
   TEAM_SIZE,
   TOTAL_STEPS,
@@ -23,13 +24,14 @@ import {
   type Step,
   type Team,
 } from "@/lib/draft-rules"
+import { formatDuration } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
 import { useFitGrid } from "@/lib/use-fit-grid"
 import { useRoom, useServerClock } from "@/lib/use-room"
 
 const TEAMS: Record<Team, { name: string; color: string }> = {
-  a: { name: TEAM_NAMES.a, color: "var(--team-a)" },
-  b: { name: TEAM_NAMES.b, color: "var(--team-b)" },
+  a: { name: TEAM_NAMES.a, color: TEAM_COLORS.a },
+  b: { name: TEAM_NAMES.b, color: TEAM_COLORS.b },
 }
 
 const HERO_GAP = 6
@@ -241,7 +243,6 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 team={team}
                 players={teams[team]}
                 meId={meId}
-                isCaptain={captainTeam === team}
                 isHost={isHost}
                 hostId={view.hostId}
                 picks={heroesOf(team, "pick")}
@@ -505,8 +506,7 @@ function CaptainsBanner({
       {canStart && (
         <button
           onClick={onStart}
-          className="rounded-full px-5 py-1.5 font-display text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-black/40"
-          style={{ background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }}
+          className="rounded-full px-5 py-1.5 font-display text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-black/40 bg-team-gradient"
         >
           Iniciar draft
         </button>
@@ -592,11 +592,8 @@ function TurnBanner({
       </div>
     )
   }
-  if (!current) {
-    return (
-      <span className="text-sm text-muted-foreground">Defina os dois capitães para começar o draft</span>
-    )
-  }
+  // Entre a moeda e o primeiro turno não há turno atual (a moeda aparece no lugar).
+  if (!current) return null
 
   // Quantas ações seguidas iguais o time ainda tem neste turno (ex.: 2 picks).
   let count = 0
@@ -637,7 +634,7 @@ function TurnBanner({
         }`}
         aria-label={`${seconds} segundos restantes`}
       >
-        {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
+        {formatDuration(seconds)}
       </span>
     </div>
   )
@@ -769,7 +766,6 @@ function TeamCard({
   team,
   players,
   meId,
-  isCaptain,
   isHost,
   hostId,
   picks,
@@ -782,7 +778,6 @@ function TeamCard({
   team: Team
   players: PlayerView[]
   meId: string
-  isCaptain: boolean
   isHost: boolean
   hostId: string | null
   picks: Hero[]
@@ -841,8 +836,8 @@ function TeamCard({
               />
             )
           }
-          // Você pode sair do time; o capitão pode tirar qualquer um do time dele; o anfitrião move os fictícios.
-          const removable = !locked && (p.id === meId || isCaptain || (isHost && p.bot))
+          // Antes do draft: você pode sair da vaga de capitão; o anfitrião também tira os fictícios.
+          const removable = !locked && (p.id === meId || (isHost && p.bot))
           return (
             <PlayerAvatar
               key={`jogador-${p.id}`}
@@ -885,8 +880,7 @@ function CopyLinkButton() {
       onClick={copy}
       title="Copiar link da sala"
       aria-label={copied ? "Link copiado" : "Copiar link da sala"}
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white transition-transform hover:-translate-y-0.5"
-      style={{ background: "linear-gradient(135deg, var(--team-a) 0%, var(--team-b) 100%)" }}
+      className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white transition-transform hover:-translate-y-0.5 bg-team-gradient"
     >
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {copied ? (

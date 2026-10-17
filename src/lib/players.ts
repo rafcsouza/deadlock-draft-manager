@@ -17,6 +17,14 @@ export function getAccountLinks() {
   }
 }
 
+// Perfis do site que têm SteamID, por conta Steam. Nome e avatar do perfil valem acima do nome da Steam.
+export function getProfilesBySteam() {
+  const rows = db
+    .prepare("SELECT id, username, avatar, steam_account_id FROM users WHERE steam_account_id IS NOT NULL")
+    .all() as { id: number; username: string; avatar: string | null; steam_account_id: number }[]
+  return new Map(rows.map((u) => [u.steam_account_id, u]))
+}
+
 export function getPlayerNames() {
   const rows = db.prepare("SELECT account_id, name FROM player_names").all() as { account_id: number; name: string }[]
   return new Map(rows.map((r) => [r.account_id, r.name]))

@@ -4,6 +4,7 @@ export type Team = "a" | "b"
 export type Step = { team: Team; action: "ban" | "pick" }
 
 export const TEAM_NAMES: Record<Team, string> = { a: "Hidden King", b: "Archmother" }
+export const TEAM_COLORS: Record<Team, string> = { a: "var(--team-a)", b: "var(--team-b)" }
 export const TEAM_SIZE = 6
 
 // Tempo por turno (pick ou ban), em segundos.

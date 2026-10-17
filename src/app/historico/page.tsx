@@ -4,33 +4,19 @@ import { ImportMatchForm, VerifyMatchForm } from "@/components/import-match-form
 import { Logo } from "@/components/logo"
 import { Scoreboard } from "@/components/scoreboard"
 import { requireUser } from "@/lib/auth"
-import { db } from "@/lib/db"
-import { TEAM_NAMES, type Team } from "@/lib/draft-rules"
+import { TEAM_COLORS, TEAM_NAMES, type Team } from "@/lib/draft-rules"
 import { listDrafts, type SavedDraft } from "@/lib/drafts"
-import { formatDuration, playerName } from "@/lib/format"
+import { formatDateTime, formatDuration, playerName } from "@/lib/format"
 import { getHeroes, type Hero } from "@/lib/heroes"
 import { getItems, type ShopItem } from "@/lib/items"
+import { getProfilesBySteam } from "@/lib/players"
 
 export const metadata = { title: "Histórico de partidas" }
-
-const TEAM_COLORS: Record<Team, string> = { a: "var(--team-a)", b: "var(--team-b)" }
-
-const dateFormat = new Intl.DateTimeFormat("pt-BR", {
-  dateStyle: "short",
-  timeStyle: "short",
-  timeZone: "America/Sao_Paulo",
-})
 
 export default async function HistoryPage() {
   const user = await requireUser("/historico")
   // Nome e perfil de cada jogador vêm dos perfis atuais (pelo SteamID), não do que foi gravado na importação.
-  const profiles = new Map(
-    (db.prepare("SELECT id, username, steam_account_id FROM users WHERE steam_account_id IS NOT NULL").all() as {
-      id: number
-      username: string
-      steam_account_id: number
-    }[]).map((u) => [u.steam_account_id, u]),
-  )
+  const profiles = getProfilesBySteam()
   const drafts = listDrafts().map((d) => ({
     ...d,
     stats: d.stats.map((p) => {
@@ -115,7 +101,7 @@ function MatchCard({
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {/* Partidas de print não têm o horário real (só depois de vincular pela API). */}
-        {draft.verified && <span>{dateFormat.format(draft.playedAt)}</span>}
+        {draft.verified && <span>{formatDateTime(draft.playedAt)}</span>}
         <span className="font-mono">{formatDuration(draft.durationS)}</span>
         {!draft.verified && <span className="rounded-full bg-yellow-600/20 px-2 py-0.5 font-semibold text-yellow-300">Pendente</span>}
         {played && <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-foreground">Você jogou</span>}
