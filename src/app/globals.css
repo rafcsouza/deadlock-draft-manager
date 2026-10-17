@@ -11,6 +11,10 @@
   /* Cores dos times (Hidden King / Archmother) */
   --team-a: #c4862e;
   --team-b: #6688cc;
+
+  /* Sua vez no draft: vermelho para banir, verde para escolher (diferentes das cores dos times) */
+  --turn-ban: #ef4444;
+  --turn-pick: #22c55e;
 }
 
 @theme inline {
@@ -38,6 +42,21 @@
   }
   ::selection {
     background: color-mix(in oklab, var(--team-a) 40%, transparent);
+  }
+}
+
+/* Borda pulsando na área de heróis quando é a sua vez (a cor vem de --turn-color). */
+.turn-glow {
+  border-color: var(--turn-color);
+  animation: turn-glow 1.6s ease-in-out infinite;
+}
+@keyframes turn-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px var(--turn-color), 0 0 18px -6px var(--turn-color);
+  }
+  50% {
+    box-shadow: 0 0 0 2px var(--turn-color), 0 0 36px -4px var(--turn-color);
   }
 }
 

@@ -89,6 +89,9 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
     const captain = teams[team][0]
     return Boolean(captain && (captain.id === meId || (isHost && captain.bot)))
   }
+  // Sua vez no draft de heróis: vermelho para banir, verde para escolher.
+  const myAction = current && actsFor(current.team) ? current.action : null
+  const turnColor = myAction === "ban" ? "var(--turn-ban)" : "var(--turn-pick)"
   const selectedIsBot = view.lobby.some((p) => p.id === selected && p.bot)
   const canManage = isHost || captainTeam !== null
   const canPickPlayer = pickTeam !== null && actsFor(pickTeam)
@@ -105,6 +108,16 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
     const i = actions.indexOf(hero.id)
     return i === -1 ? null : steps[i]
   }
+
+  // Avisa na aba do navegador quando é a sua vez (útil com a sala em segundo plano).
+  useEffect(() => {
+    if (!myAction) return
+    const original = document.title
+    document.title = myAction === "ban" ? "🔴 Sua vez de banir" : "🟢 Sua vez de escolher"
+    return () => {
+      document.title = original
+    }
+  }, [myAction, actions.length])
 
   const move = (playerId: string | null | undefined, to: Team | "lobby") => {
     setSelected(null)
@@ -232,7 +245,12 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
         </div>
 
         {/* 2. Heróis */}
-        <section className="relative flex h-[75svh] min-h-0 flex-col rounded-2xl border border-border bg-card/80 lg:h-auto lg:flex-1">
+        <section
+          className={`relative flex h-[75svh] min-h-0 flex-col rounded-2xl border bg-card/80 lg:h-auto lg:flex-1 ${
+            myAction ? "turn-glow" : "border-border"
+          }`}
+          style={{ "--turn-color": turnColor } as React.CSSProperties}
+        >
           {/* 5. De quem é a vez */}
           <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-border px-14">
             <TimerSettings
@@ -280,7 +298,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 finished={finished}
                 actions={actions.length}
                 remaining={remaining}
-                myTurn={current !== null && actsFor(current.team)}
+                myTurn={myAction !== null}
                 canRestart={canManage}
                 onRestart={() => send({ type: "restart" })}
               />
@@ -306,10 +324,13 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                     disabled={!clickable}
                     title={h.name}
                     // Disponível: sem cor; ao passar o mouse, cresce em relevo e ganha a cor do herói.
+                    // Na sua vez, a borda do hover ganha a cor da ação (vermelho banir, verde escolher).
                     className={`group relative aspect-[3/4] overflow-hidden rounded-lg border-b-2 bg-muted transition-[transform,box-shadow,border-color] duration-200 ${
                       status
                         ? ""
-                        : "border-border hover:z-10 hover:scale-110 hover:border-[var(--hero-color)] hover:shadow-xl hover:shadow-black/70"
+                        : clickable
+                          ? "border-border hover:z-10 hover:scale-110 hover:border-[var(--turn-color)] hover:shadow-xl hover:shadow-black/70 hover:outline-2 hover:outline-[var(--turn-color)]"
+                          : "border-border hover:z-10 hover:scale-110 hover:border-[var(--hero-color)] hover:shadow-xl hover:shadow-black/70"
                     } ${clickable ? "cursor-pointer" : "cursor-default"}`}
                     style={
                       {
@@ -333,6 +354,17 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                     {heroGrid && heroGrid.width >= 52 && (
                       <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-1 pb-1 pt-4 text-center text-[10px] font-bold leading-tight text-white">
                         {h.name}
+                      </span>
+                    )}
+                    {clickable && myAction && (
+                      <span className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                        <span
+                          className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest text-white shadow-lg shadow-black/60"
+                          style={{ background: turnColor }}
+                        >
+                          <TurnIcon action={myAction} className="h-2.5 w-2.5" />
+                          {myAction === "ban" ? "BANIR" : "ESCOLHER"}
+                        </span>
                       </span>
                     )}
                     {status?.action === "ban" && (
@@ -515,15 +547,29 @@ function TurnBanner({
     current.action === "ban" ? "bane um herói" : `escolhe ${count === 1 ? "um herói" : `${count} heróis`}`
 
   const seconds = Math.max(remaining, 0)
+  const turnColor = current.action === "ban" ? "var(--turn-ban)" : "var(--turn-pick)"
   return (
     <div className="flex items-center gap-3">
-      <span
-        className="rounded-full border px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider"
-        style={{ borderColor: color, color }}
-      >
-        {myTurn ? "Sua vez: " : `${name} `}
-        <span className="text-foreground">{verb}</span>
-      </span>
+      {myTurn ? (
+        // Sua vez: faixa cheia na cor da ação, com ícone, para não passar despercebido.
+        <span
+          className="flex animate-pulse items-center gap-2 rounded-full px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider text-white shadow-lg shadow-black/50 [animation-duration:1.6s]"
+          style={{ background: turnColor }}
+        >
+          <TurnIcon action={current.action} className="h-5 w-5" />
+          {current.action === "ban"
+            ? "Sua vez de banir"
+            : `Sua vez de escolher${count > 1 ? ` ${count} heróis` : ""}`}
+        </span>
+      ) : (
+        <span
+          className="flex items-center gap-2 rounded-full border px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider"
+          style={{ borderColor: color, color }}
+        >
+          {name} <span className="text-foreground">{verb}</span>
+          <TurnIcon action={current.action} className="h-4 w-4" style={{ color: turnColor }} />
+        </span>
+      )}
       <span
         className={`w-14 rounded-full border px-2 py-1.5 text-center font-mono text-sm font-bold tabular-nums ${
           seconds <= 10 ? "border-red-600/70 text-red-400" : "border-border text-muted-foreground"
@@ -533,6 +579,22 @@ function TurnBanner({
         {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
       </span>
     </div>
+  )
+}
+
+// Ícone da ação do turno: círculo cortado para banir, check para escolher.
+function TurnIcon({ action, className, style }: { action: Step["action"]; className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {action === "ban" ? (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="m5.6 5.6 12.8 12.8" />
+        </>
+      ) : (
+        <path d="m5 12.5 4.5 4.5L19 7.5" />
+      )}
+    </svg>
   )
 }
 
