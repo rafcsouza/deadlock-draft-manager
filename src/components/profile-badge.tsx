@@ -7,7 +7,7 @@ export function ProfileBadge({ user }: { user: User }) {
   return (
     <div className="flex w-full items-center gap-2 border-t border-border pt-5">
       <Link
-        href={user.isGuest ? "/cadastro" : "/perfil"}
+        href="/perfil"
         className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-muted/40 p-2 pr-3 text-left transition-colors hover:border-muted-foreground/50 hover:bg-muted/70"
       >
         {user.avatar ? (
@@ -21,7 +21,7 @@ export function ProfileBadge({ user }: { user: User }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold">{user.username}</span>
           <span className="block text-[11px] text-muted-foreground group-hover:text-foreground">
-            {user.isGuest ? "Visitante · Criar conta" : "Editar perfil"}
+            {user.isGuest ? "Visitante · Mudar nome" : "Editar perfil"}
           </span>
         </span>
         <svg className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

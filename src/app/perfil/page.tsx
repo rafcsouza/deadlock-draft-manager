@@ -1,6 +1,5 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
-import { ChangePasswordForm, EditProfileForm } from "@/components/profile-forms"
+import { ChangePasswordForm, EditProfileForm, GuestNameForm } from "@/components/profile-forms"
 import { ThemedCard } from "@/components/themed-card"
 import { requireUser } from "@/lib/auth"
 import { db } from "@/lib/db"
@@ -10,8 +9,7 @@ export const metadata = { title: "Editar perfil" }
 
 export default async function EditProfilePage() {
   const user = await requireUser("/perfil")
-  // Visitante não tem perfil para editar: oferece criar uma conta.
-  if (user.isGuest) redirect("/cadastro")
+  if (user.isGuest) return <GuestProfile username={user.username} />
   const row = db.prepare("SELECT steam_account_id FROM users WHERE id = ?").get(user.id) as { steam_account_id: number | null }
   const steamId = row.steam_account_id
 
@@ -39,6 +37,30 @@ export default async function EditProfilePage() {
         <h2 className="mb-4 text-left text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Trocar senha</h2>
         <ChangePasswordForm />
       </div>
+    </ThemedCard>
+  )
+}
+
+// Visitante: troca só o nome; o resto do perfil (avatar, SteamID, senha) vem com uma conta.
+function GuestProfile({ username }: { username: string }) {
+  return (
+    <ThemedCard>
+      <div className="w-full space-y-1">
+        <Link href="/" className="block text-left text-xs text-muted-foreground hover:text-foreground">
+          ← Voltar
+        </Link>
+        <h1 className="font-display text-3xl font-bold uppercase tracking-wide">Seu nome</h1>
+        <p className="text-xs text-muted-foreground">É o nome que aparece para os outros nas salas de draft.</p>
+      </div>
+
+      <GuestNameForm username={username} />
+
+      <p className="w-full border-t border-border pt-5 text-xs text-muted-foreground">
+        Quer avatar, SteamID e stats no leaderboard?{" "}
+        <Link href="/cadastro" className="font-semibold text-foreground hover:underline">
+          Crie uma conta
+        </Link>
+      </p>
     </ThemedCard>
   )
 }

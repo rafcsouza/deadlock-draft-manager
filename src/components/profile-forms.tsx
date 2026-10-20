@@ -1,6 +1,6 @@
 "use client"
 
-import { changePassword, updateProfile } from "@/app/perfil/actions"
+import { changePassword, renameGuest, updateProfile } from "@/app/perfil/actions"
 import { AvatarPicker } from "@/components/avatar-picker"
 import { Field, FormStatus, inputClass, SubmitButton, useFormAction } from "@/components/form-ui"
 import { KEEP_AVATAR } from "@/lib/profile-form"
@@ -19,17 +19,7 @@ export function EditProfileForm({
     <form onSubmit={onSubmit} className="w-full space-y-4">
       <AvatarPicker initial={avatar} keepValue={KEEP_AVATAR} />
       <Field label="Usuário">
-        <input
-          name="username"
-          required
-          minLength={3}
-          maxLength={20}
-          pattern="[A-Za-z0-9_.\-]{3,20}"
-          title="3 a 20 caracteres: letras, números, ponto, hífen ou _"
-          defaultValue={username}
-          autoComplete="username"
-          className={inputClass}
-        />
+        <UsernameInput defaultValue={username} />
       </Field>
       <Field label="SteamID64 (opcional)">
         <input name="steamId" defaultValue={steam64 ?? ""} inputMode="numeric" autoComplete="off" placeholder="7656119xxxxxxxxxx" className={inputClass} />
@@ -44,6 +34,36 @@ export function EditProfileForm({
       <FormStatus state={state} pending={pending} />
       <SubmitButton pending={pending} pendingText="Salvando...">Salvar perfil</SubmitButton>
     </form>
+  )
+}
+
+// Visitante: só o nome que aparece nas salas.
+export function GuestNameForm({ username }: { username: string }) {
+  const { state, onSubmit, pending } = useFormAction(renameGuest)
+  return (
+    <form onSubmit={onSubmit} className="w-full space-y-4">
+      <Field label="Nome">
+        <UsernameInput defaultValue={username} />
+      </Field>
+      <FormStatus state={state} pending={pending} />
+      <SubmitButton pending={pending} pendingText="Salvando...">Salvar nome</SubmitButton>
+    </form>
+  )
+}
+
+function UsernameInput({ defaultValue }: { defaultValue: string }) {
+  return (
+    <input
+      name="username"
+      required
+      minLength={3}
+      maxLength={20}
+      pattern="[A-Za-z0-9_.\-]{3,20}"
+      title="3 a 20 caracteres: letras, números, ponto, hífen ou _"
+      defaultValue={defaultValue}
+      autoComplete="username"
+      className={inputClass}
+    />
   )
 }
 

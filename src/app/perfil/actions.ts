@@ -41,6 +41,20 @@ export async function updateProfile(_: ProfileState, form: FormData): Promise<Pr
   return { ok: "Perfil salvo." }
 }
 
+// Visitante não tem perfil completo, mas pode trocar o nome que aparece nas salas.
+export async function renameGuest(_: ProfileState, form: FormData): Promise<ProfileState> {
+  const user = await getCurrentUser()
+  if (!user?.isGuest) return { error: "Só visitantes usam este formulário." }
+
+  const username = text(form, "username")
+  const nameError = usernameError(username, user.id)
+  if (nameError) return { error: nameError }
+
+  db.prepare("UPDATE users SET username = ? WHERE id = ?").run(username, user.id)
+  revalidatePath("/", "layout")
+  return { ok: "Nome salvo." }
+}
+
 export async function changePassword(_: ProfileState, form: FormData): Promise<ProfileState> {
   const user = await getCurrentUser()
   if (!user || user.isGuest) return { error: "Faça login com uma conta." }
