@@ -65,7 +65,9 @@ const SCHEMA = `
 function open() {
   mkdirSync(path.dirname(DB_PATH), { recursive: true })
   const db = new DatabaseSync(DB_PATH)
-  db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
+  // busy_timeout primeiro: o build do Next abre o banco em vários processos ao mesmo tempo, e sem
+  // espera o segundo a escrever (ex.: o schema) falha com "database is locked".
+  db.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;")
   return db
 }
 
