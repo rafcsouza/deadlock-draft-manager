@@ -1,4 +1,5 @@
 import "server-only"
+import { ingestNow } from "@/lib/local-ingest"
 
 const API = "https://api.deadlock-api.com/v1"
 
@@ -108,13 +109,34 @@ async function fetchSteamNames(accountIds: number[]) {
   }
 }
 
-// Busca a partida pelo ID. Tenta como partida normal e depois como lobby personalizado.
-export async function fetchMatchStats(matchId: number): Promise<MatchStats> {
+type MatchInfo = NonNullable<ApiMatch["match_info"]>
+
+// Tenta como partida normal e depois como lobby personalizado. null: a API não tem a partida.
+async function fetchInfo(matchId: number): Promise<MatchInfo | null> {
   const data =
     (await request(`${API}/matches/${matchId}/metadata`)) ??
     (await request(`${API}/matches/${matchId}/metadata?is_custom=true`))
-  const info = data?.match_info
-  if (!info?.players?.length) {
+  return data?.match_info?.players?.length ? data.match_info : null
+}
+
+// Busca a partida pelo ID.
+export async function fetchMatchStats(matchId: number): Promise<MatchStats> {
+  let info: MatchInfo | null = null
+  let limited: RateLimitError | null = null
+  try {
+    info = await fetchInfo(matchId)
+  } catch (e) {
+    if (!(e instanceof RateLimitError)) throw e
+    limited = e
+  }
+  // A API ainda não tem os dados da partida (ou teria de pedir à Steam, que limita): o ingest deste PC
+  // manda agora o que o jogo e o cache da Steam têm, e tentamos mais uma vez.
+  if (!info && (await ingestNow())) {
+    limited = null
+    info = await fetchInfo(matchId)
+  }
+  if (limited) throw limited
+  if (!info) {
     throw new Error("Partida não encontrada. Confira o ID; partidas muito recentes podem levar alguns minutos para aparecer.")
   }
   if (info.game_mode !== undefined && info.game_mode !== STANDARD_GAME_MODE) {
