@@ -9,7 +9,7 @@ function hue(name: string) {
   return h
 }
 
-// "Fictício 11" → "F11"; "Ana Souza" → "AS"; "rafael" → "RA".
+// "Fictício 11" → "F11"; "Ana Lima" → "AL"; "jogador" → "JO".
 function initials(name: string) {
   const [first = "", second] = name.split(" ")
   if (second && /^\d+$/.test(second)) return first[0] + second

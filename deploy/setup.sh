@@ -3,9 +3,10 @@
 #   bash setup.sh
 # O endereço público vira https://<ip-com-traços>.sslip.io (HTTPS grátis, sem precisar de domínio).
 # Para usar um domínio próprio: DOMAIN=meusite.com bash setup.sh
+# Para instalar a partir de um fork: REPO=https://github.com/voce/seu-fork.git bash setup.sh
 set -euo pipefail
 
-REPO="git@github.com:rafcsouza/deadlock-draft-manager.git"
+REPO="${REPO:-https://github.com/rafcsouza/deadlock-draft-manager.git}"
 APP_DIR="$HOME/app"
 NODE_MAJOR=24
 
