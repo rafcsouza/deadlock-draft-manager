@@ -1,6 +1,6 @@
 import Link from "next/link"
 import type { Hero } from "@/lib/heroes"
-import type { LeaderboardRow } from "@/lib/leaderboard"
+import { eloRank, type LeaderboardRow } from "@/lib/leaderboard"
 import type { Award, Pair } from "@/lib/leaderboard-extras"
 
 type HeroMap = Map<number, Hero>
@@ -12,7 +12,7 @@ const PODIUM = [
 ]
 
 // Os três primeiros em destaque, com o retrato "on fire" do herói mais jogado de cada um.
-export function Podium({ rows, heroes }: { rows: LeaderboardRow[]; heroes: HeroMap }) {
+export function Podium({ rows, heroes, elo }: { rows: LeaderboardRow[]; heroes: HeroMap; elo?: boolean }) {
   const top = rows.filter((r) => r.rank !== null && r.rank <= 3)
   if (top.length < 3) return null
   return (
@@ -30,7 +30,16 @@ export function Podium({ rows, heroes }: { rows: LeaderboardRow[]; heroes: HeroM
               )}
               <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-6">
                 <span className="block truncate text-sm font-bold text-white">{r.name}</span>
-                <span className={`font-mono text-xs font-bold tabular-nums ${text}`}>{r.rating} pts</span>
+                {/* O valor da ordem escolhida em destaque; o outro, menor ao lado. */}
+                <span className="flex items-center justify-center gap-1.5 font-mono text-xs tabular-nums">
+                  <span className={`${elo ? "text-white/60" : `font-bold ${text}`}`}>{r.rating} pts</span>
+                  {!r.eloCalibrating && (
+                    <span className={`flex items-center gap-0.5 ${elo ? `font-bold ${text}` : "text-white/60"}`}>
+                      <EloBadge elo={r.elo} size="h-4 w-4" />
+                      {r.elo}
+                    </span>
+                  )}
+                </span>
               </span>
             </span>
             <span className={`flex w-full ${height} items-start justify-center rounded-t-xl border border-b-0 border-border bg-card/80 pt-2`}>
@@ -40,6 +49,22 @@ export function Podium({ rows, heroes }: { rows: LeaderboardRow[]; heroes: HeroM
         )
       })}
     </section>
+  )
+}
+
+// Emblema da patente do Deadlock correspondente ao Elo (imagem da Deadlock API).
+export function EloBadge({ elo, size = "h-7 w-7", label }: { elo: number; size?: string; label?: boolean }) {
+  const rank = eloRank(elo)
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5" title={`${rank.name} (${elo})`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={rank.image} alt={rank.name} className={`${size} object-contain`} loading="lazy" />
+      {label && (
+        <span className="w-[4.5rem] truncate text-[11px] font-semibold" style={{ color: rank.color }}>
+          {rank.name}
+        </span>
+      )}
+    </span>
   )
 }
 

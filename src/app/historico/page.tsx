@@ -1,4 +1,5 @@
 import { Collapsible } from "@/components/collapsible"
+import { TeamIcon } from "@/components/team-icon"
 import { DraftTimeline } from "@/components/draft-timeline"
 import { ImportMatchForm, VerifyMatchForm } from "@/components/import-match-form"
 import { Scoreboard } from "@/components/scoreboard"
@@ -73,6 +74,7 @@ function MatchCard({
   const summary = (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       <span className="w-56 shrink-0 truncate font-display text-base font-bold uppercase tracking-wide">
+        <TeamIcon team={draft.winner} className="mr-1.5 h-4 w-4 align-[-2px]" />
         <span style={{ color: TEAM_COLORS[draft.winner] }}>{teamTitle(draft, draft.winner)}</span>{" "}
         <span className="text-foreground">venceu</span>
         {captain(draft.winner) && (

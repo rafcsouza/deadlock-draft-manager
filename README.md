@@ -110,7 +110,7 @@ As salas vivem na memória do servidor e chegam aos navegadores por Server-Sent 
 - Inspirado no draft da comunidade [Deadlock PRO BR](https://github.com/deadlockprobr).
 - Heróis, itens e estatísticas pela [Deadlock API](https://deadlock-api.com).
 - OCR dos prints com [Tesseract.js](https://github.com/naptha/tesseract.js).
-- Sons de interface e falas dos heróis do próprio Deadlock, tocados direto da Deadlock API (não ficam neste repositório).
+- Sons de interface, falas dos heróis, fontes (Reaver e Radiance), símbolos dos times e patentes do próprio Deadlock, carregados direto da Deadlock API (não ficam neste repositório).
 - Sons alternativos dos pacotes do [Kenney](https://kenney.nl) (domínio público, em `public/sounds`).
 
 Projeto de fã, sem ligação com a Valve. Deadlock e os heróis são marcas da Valve Corporation.

@@ -1,4 +1,5 @@
 import { PlayerFace } from "@/components/player-avatar"
+import { TeamIcon } from "@/components/team-icon"
 import { TEAM_COLORS, TEAM_NAMES, type PlayerView, type Step, type Team } from "@/lib/draft-rules"
 import type { Hero } from "@/lib/heroes"
 
@@ -102,8 +103,14 @@ function turnBreak(order: (Team | null)[], i: number) {
 function TeamLabels({ labels }: { labels: Record<Team, string> }) {
   return (
     <div className="flex max-w-32 flex-col justify-between pb-0.5 pt-4 text-right text-[9px] font-black uppercase leading-none tracking-wider">
-      <span className="truncate" style={{ color: TEAM_COLORS.a }}>{labels.a}</span>
-      <span className="truncate" style={{ color: TEAM_COLORS.b }}>{labels.b}</span>
+      <span className="flex items-center justify-end gap-1 truncate" style={{ color: TEAM_COLORS.a }}>
+        <TeamIcon team="a" className="h-3 w-3" />
+        {labels.a}
+      </span>
+      <span className="flex items-center justify-end gap-1 truncate" style={{ color: TEAM_COLORS.b }}>
+        <TeamIcon team="b" className="h-3 w-3" />
+        {labels.b}
+      </span>
     </div>
   )
 }

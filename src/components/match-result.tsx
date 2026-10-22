@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { TeamIcon } from "@/components/team-icon"
 import { useState } from "react"
 import { TEAM_COLORS, TEAM_NAMES, type MatchResultView, type ResultPlayer, type RoomAction, type Team } from "@/lib/draft-rules"
 import { formatDuration, formatSouls, playerName } from "@/lib/format"
@@ -85,6 +86,7 @@ export function MatchResultPanel({
     <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <p className="font-display text-xl font-bold uppercase tracking-wide">
+          <TeamIcon team={result.winner} className="mr-2 h-5 w-5 align-[-3px]" />
           <span style={{ color: TEAM_COLORS[result.winner] }}>{TEAM_NAMES[result.winner]}</span> venceu
         </p>
         <span className="text-xs text-muted-foreground">

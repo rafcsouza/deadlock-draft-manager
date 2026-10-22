@@ -3,15 +3,52 @@ import { listVerifiedMatches, type SavedDraft } from "@/lib/drafts"
 import { getAccountLinks, getPlayerNames, getProfilesBySteam } from "@/lib/players"
 
 // Pontuação (recalculada do histórico inteiro, em ordem cronológica). Todo mundo começa com 0
-// e só ganha pontos: vitória vale mais, derrota vale menos, e há bônus por sequência e MVP.
+// e ninguém perde pontos: só a vitória e o desempenho valem. Derrota não dá nada, a não ser para
+// quem ficou entre os 3 melhores da partida (o bônus de MVP vale nos dois times).
 export const POINTS = {
   win: 5,
-  loss: 3,
+  loss: 0,
   // Vitória na sequência: a 2ª seguida vale 6, da 3ª em diante vale 7.
   winStreak2: 6,
   winStreak3: 7,
-  // Bônus pela colocação de MVP da partida (vale também na derrota).
-  mvpBonus: { 1: 2, 2: 1 } as Record<number, number>,
+  // Bônus pela colocação entre os 3 melhores da partida (a API marca só o top 3).
+  mvpBonus: { 1: 4, 2: 3, 3: 2 } as Record<number, number>,
+}
+
+// Elo (modo alternativo do leaderboard): não cresce com o número de partidas. Todo mundo começa com
+// ELO.start; a cada partida ganha ou perde ELO.k × (resultado − chance de vitória), com a chance
+// calculada pela média de Elo de cada time. Os 3 melhores da partida ganham um bônus pequeno, mesmo
+// perdendo, para o desempenho individual também contar.
+export const ELO = {
+  start: 1000,
+  k: 32,
+  // Com menos partidas, o Elo ainda está "em calibração": é calculado, mas não aparece nem conta no
+  // ranking por Elo (evita que poucas partidas joguem alguém lá em cima ou lá embaixo).
+  minMatches: 8,
+  mvpBonus: { 1: 6, 2: 4, 3: 2 } as Record<number, number>,
+}
+
+export type LeaderboardMode = "pontos" | "elo"
+
+// Patente do Deadlock para um Elo: começa em Mystic 1 com ELO.start, cada patente vale 40 pontos
+// (6 subníveis), de Initiate a Eternus.
+const RANK_NAMES = ["Initiate", "Seeker", "Acolyte", "Sentinel", "Mystic", "Ritualist", "Emissary", "Oracle", "Phantom", "Ascendant", "Eternus"]
+const RANK_COLORS = ["#a0673d", "#c2477f", "#7d8fd1", "#8fbf5f", "#e7b43c", "#f06a70", "#c49af0", "#c27756", "#a9a9a9", "#d9b26a", "#5ce9a9"]
+const RANK_SIZE = 40
+const START_TIER = 5
+
+export function eloRank(elo: number) {
+  const steps = Math.floor(((elo - ELO.start) * 6) / RANK_SIZE)
+  const index = Math.min(10 * 6 + 5, Math.max(0, (START_TIER - 1) * 6 + steps))
+  const tier = Math.floor(index / 6) + 1
+  const sub = (index % 6) + 1
+  return {
+    tier,
+    sub,
+    name: `${RANK_NAMES[tier - 1]} ${sub}`,
+    color: RANK_COLORS[tier - 1],
+    image: `https://api.deadlock-api.com/v1/assets/ranks/${tier}/${sub}/image?format=webp`,
+  }
 }
 
 // Com menos partidas que isso, o jogador fica "em avaliação": aparece no fim, sem posição.
@@ -35,6 +72,10 @@ export type LeaderboardRow = {
   deaths: number
   assists: number
   lastChange: number
+  elo: number
+  // Quanto o Elo mudou na última partida (positivo ou negativo).
+  eloChange: number
+  eloCalibrating: boolean
   // Pontos ganhos/perdidos em cada partida, em ordem cronológica.
   history: { draftId: string; change: number; rating: number }[]
   // Partidas por herói (heroId -> partidas).
@@ -48,7 +89,7 @@ export type LeaderboardRow = {
   rankChange: number | null
 }
 
-export function getLeaderboard(): LeaderboardRow[] {
+export function getLeaderboard(mode: LeaderboardMode = "pontos"): LeaderboardRow[] {
   // Partidas de print ainda não confirmadas pela API não contam (os jogadores não têm SteamID).
   const matches = listVerifiedMatches().reverse()
   const links = getAccountLinks()
@@ -56,7 +97,7 @@ export function getLeaderboard(): LeaderboardRow[] {
 
   // Setas: compara com a tabela de antes da última partida.
   const before = new Map(
-    rank(aggregate(matches.slice(0, -1), links)).map((r) => [r.accountId, r.rank]),
+    rank(aggregate(matches.slice(0, -1), links), mode).map((r) => [r.accountId, r.rank]),
   )
 
   // Quem tem perfil aparece com o nome do perfil (de qualquer uma das suas contas).
@@ -75,7 +116,7 @@ export function getLeaderboard(): LeaderboardRow[] {
     if (r) r.name = name
   }
 
-  return rank(rows).map((r) => {
+  return rank(rows, mode).map((r) => {
     const prev = before.get(r.accountId)
     return { ...r, rankChange: r.rank !== null && prev != null ? prev - r.rank : null }
   })
@@ -107,6 +148,9 @@ function aggregate(matches: SavedDraft[], links: ReturnType<typeof getAccountLin
         deaths: 0,
         assists: 0,
         lastChange: 0,
+        elo: ELO.start,
+        eloChange: 0,
+        eloCalibrating: true,
         history: [],
         heroes: new Map(),
         topHero: null,
@@ -122,8 +166,21 @@ function aggregate(matches: SavedDraft[], links: ReturnType<typeof getAccountLin
   }
 
   for (const match of matches) {
-    for (const p of match.stats) {
-      const r = row(p.accountId, p.steamName)
+    const players = match.stats.map((p) => ({ p, r: row(p.accountId, p.steamName) }))
+    // Chance de vitória do time A pela média de Elo antes da partida.
+    const average = (team: string) => {
+      const list = players.filter((x) => x.p.team === team)
+      return list.reduce((sum, x) => sum + x.r.elo, 0) / Math.max(list.length, 1)
+    }
+    const chanceA = 1 / (1 + 10 ** ((average("b") - average("a")) / 400))
+    const eloChanges = players.map(({ p }) => {
+      const chance = p.team === "a" ? chanceA : 1 - chanceA
+      return ELO.k * ((p.team === match.winner ? 1 : 0) - chance) + (ELO.mvpBonus[p.mvpRank ?? 0] ?? 0)
+    })
+
+    for (const [i, { p, r }] of players.entries()) {
+      r.elo += eloChanges[i]
+      r.eloChange = eloChanges[i]
       const won = p.team === match.winner
       // Sequência de vitórias antes desta partida (0 se a última foi derrota).
       const streakBefore = Math.max(r.streak, 0)
@@ -156,17 +213,30 @@ function aggregate(matches: SavedDraft[], links: ReturnType<typeof getAccountLin
 }
 
 // Ordena: primeiro quem já tem MIN_MATCHES partidas (com posição), depois quem está em avaliação.
-function rank(rows: Map<number, LeaderboardRow>): LeaderboardRow[] {
+function rank(rows: Map<number, LeaderboardRow>, mode: LeaderboardMode): LeaderboardRow[] {
   const sorted = [...rows.values()]
-    .map((r) => ({ ...r, rating: Math.round(r.rating), lastChange: Math.round(r.lastChange), provisional: r.matches < MIN_MATCHES }))
+    .map((r) => ({
+      ...r,
+      rating: Math.round(r.rating),
+      lastChange: Math.round(r.lastChange),
+      elo: Math.round(r.elo),
+      eloChange: Math.round(r.eloChange),
+      provisional: r.matches < MIN_MATCHES,
+      eloCalibrating: r.matches < ELO.minMatches,
+    }))
     // Desempate: mais vitórias, depois melhor KDA.
     .sort(
       (a, b) =>
         Number(a.provisional) - Number(b.provisional) ||
-        b.rating - a.rating ||
+        (mode === "elo"
+          ? Number(a.eloCalibrating) - Number(b.eloCalibrating) ||
+            // Em calibração o Elo ainda é escondido: vem antes quem está mais perto de calibrar.
+            (a.eloCalibrating ? b.matches - a.matches : b.elo - a.elo)
+          : b.rating - a.rating) ||
         b.wins - a.wins ||
         (b.kills + b.assists) / Math.max(b.deaths, 1) - (a.kills + a.assists) / Math.max(a.deaths, 1),
     )
   let position = 0
-  return sorted.map((r) => ({ ...r, rank: r.provisional ? null : ++position }))
+  // No ranking por Elo, quem está em calibração fica no fim, sem posição.
+  return sorted.map((r) => ({ ...r, rank: r.provisional || (mode === "elo" && r.eloCalibrating) ? null : ++position }))
 }

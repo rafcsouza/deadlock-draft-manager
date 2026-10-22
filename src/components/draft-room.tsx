@@ -9,6 +9,7 @@ import { EmptySlot, HostBadge, PlayerAvatar, PlayerRow } from "@/components/play
 import { RoomChat } from "@/components/room-chat"
 import { RoomClosed } from "@/components/room-closed"
 import { SoundMenu } from "@/components/sound-toggle"
+import { TeamIcon } from "@/components/team-icon"
 import {
   buildPlayerSteps,
   buildSteps,
@@ -694,6 +695,7 @@ function TurnBanner({
           className="flex items-center gap-2 rounded-full border px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider"
           style={{ borderColor: color, color }}
         >
+          <TeamIcon team={current.team} className="h-5 w-5" />
           {name} <span className="text-foreground">{verb}</span>
           <KindIcon kind={current.action} className="h-4 w-4" style={{ color: turnColor }} />
         </span>
@@ -899,7 +901,8 @@ function TeamCard({
     >
       <span className="absolute inset-x-0 top-0 h-1 rounded-t-2xl" style={{ background: color }} />
       <div className="flex items-baseline justify-between">
-        <p className="text-xs font-bold uppercase tracking-wider" style={{ color }}>
+        <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider" style={{ color }}>
+          <TeamIcon team={team} className="h-5 w-5" />
           {name}
         </p>
         <span className="text-[11px] text-muted-foreground">

@@ -1,16 +1,56 @@
 @import "tailwindcss";
 
+/* Fontes do próprio Deadlock, servidas pela Deadlock API (não ficam no repositório):
+   Reaver nos títulos e Radiance no texto. Enquanto carregam, valem Oswald e Geist. */
+@font-face {
+  font-family: "Reaver";
+  src: url("https://assets-bucket.deadlock-api.com/assets-api-res/fonts/reaver-regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Reaver";
+  src: url("https://assets-bucket.deadlock-api.com/assets-api-res/fonts/reaver-semibold.otf") format("opentype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Reaver";
+  src: url("https://assets-bucket.deadlock-api.com/assets-api-res/fonts/reaver-bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Radiance";
+  src: url("https://assets-bucket.deadlock-api.com/assets-api-res/fonts/radiance-regular.otf") format("opentype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Radiance";
+  src: url("https://assets-bucket.deadlock-api.com/assets-api-res/fonts/radiance-semibold.otf") format("opentype");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Radiance";
+  src: url("https://assets-bucket.deadlock-api.com/assets-api-res/fonts/radiance-bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+
 :root {
   --background: #0b0d12;
-  --foreground: #e9ebf0;
+  /* Creme do texto da interface do jogo */
+  --foreground: #f3e6d2;
   --card: #12151c;
   --muted: #1a1e27;
-  --muted-foreground: #8a91a0;
+  --muted-foreground: #958b7d;
   --border: #252a35;
 
-  /* Cores dos times (Hidden King / Archmother) */
-  --team-a: #c4862e;
-  --team-b: #6688cc;
+  /* Cores dos times (Hidden King / Archmother), as mesmas do jogo */
+  --team-a: #d4860b;
+  --team-b: #4d75c3;
 
   /* Sua vez no draft: vermelho para banir, verde para escolher (diferentes das cores dos times) */
   --turn-ban: #ef4444;
@@ -26,8 +66,8 @@
   --color-border: var(--border);
   --color-team-a: var(--team-a);
   --color-team-b: var(--team-b);
-  --font-sans: var(--font-geist);
-  --font-display: var(--font-oswald);
+  --font-sans: "Radiance", var(--font-geist);
+  --font-display: "Reaver", var(--font-oswald);
 }
 
 @layer base {

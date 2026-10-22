@@ -2,19 +2,48 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { playSound, setMuted, setVoice, setVoiceVolume, setVolume, useSoundSettings } from "@/lib/sound"
 
 // Alto-falante que abre os ajustes de som de quem está usando (salvos neste navegador): ligar e
 // desligar, volume e falas dos heróis, com o atalho para a página que escolhe o som de cada momento.
+// O painel vai direto no <body> (posição fixa sob o botão): dentro da sala, a coluna lateral corta o
+// que passa da borda e os cards ficariam por cima.
 export function SoundMenu({ align = "right", label }: { align?: "left" | "right"; label?: boolean }) {
   const settings = useSoundSettings()
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const r = box.current?.getBoundingClientRect()
+      if (!r) return
+      const width = PANEL_WIDTH
+      const left = align === "right" ? r.right - width : r.left
+      setPos({
+        top: r.bottom + 8,
+        left: Math.min(Math.max(8, left), window.innerWidth - width - 8),
+      })
+    }
+    place()
+    window.addEventListener("resize", place)
+    window.addEventListener("scroll", place, true)
+    return () => {
+      window.removeEventListener("resize", place)
+      window.removeEventListener("scroll", place, true)
+    }
+  }, [open, align])
 
   useEffect(() => {
     if (!open) return
-    const onDown = (e: PointerEvent) => box.current?.contains(e.target as Node) || setOpen(false)
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node
+      if (!box.current?.contains(target) && !panel.current?.contains(target)) setOpen(false)
+    }
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
     document.addEventListener("pointerdown", onDown)
     document.addEventListener("keydown", onKey)
@@ -42,31 +71,52 @@ export function SoundMenu({ align = "right", label }: { align?: "left" | "right"
         {label && "Sons"}
       </button>
 
-      {open && (
-        <div
-          className={`absolute top-10 z-50 w-64 space-y-3 rounded-xl border border-border bg-card p-3 text-left shadow-2xl shadow-black/60 ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
-        >
-          <Row label="Sons" on={!settings.muted} onToggle={() => {
-            setMuted(!settings.muted)
-            if (settings.muted) playSound("click")
-          }} />
-          <Slider label="Volume" value={settings.volume} disabled={settings.muted} onChange={setVolume} onDone={() => playSound("click")} />
-          <Row label="Falas dos heróis" on={settings.voice} onToggle={() => setVoice(!settings.voice)} />
-          <Slider label="Volume das falas" value={settings.voiceVolume} disabled={settings.muted || !settings.voice} onChange={setVoiceVolume} />
-          <Link
-            href="/sons"
-            onClick={() => setOpen(false)}
-            className="block rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted"
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={panel}
+            data-sound="none"
+            style={{ top: pos.top, left: pos.left, width: PANEL_WIDTH }}
+            className="fixed z-[100] space-y-3 rounded-xl border border-border bg-card p-3 text-left shadow-2xl shadow-black/60"
           >
-            Escolher os sons →
-          </Link>
-        </div>
-      )}
+            <Row
+              label="Sons"
+              on={!settings.muted}
+              onToggle={() => {
+                setMuted(!settings.muted)
+                if (settings.muted) playSound("click")
+              }}
+            />
+            <Slider
+              label="Volume"
+              value={settings.volume}
+              disabled={settings.muted}
+              onChange={setVolume}
+              onDone={() => playSound("click")}
+            />
+            <Row label="Falas dos heróis" on={settings.voice} onToggle={() => setVoice(!settings.voice)} />
+            <Slider
+              label="Volume das falas"
+              value={settings.voiceVolume}
+              disabled={settings.muted || !settings.voice}
+              onChange={setVoiceVolume}
+            />
+            <Link
+              href="/sons"
+              onClick={() => setOpen(false)}
+              className="block rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted"
+            >
+              Escolher os sons →
+            </Link>
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
+
+const PANEL_WIDTH = 256
 
 // Páginas com cabeçalho próprio, onde o alto-falante fica no cabeçalho em vez de flutuar.
 const WITH_HEADER = /^\/(draft\/(?!novo)|historico|leaderboards|jogador|sons)/
@@ -129,7 +179,16 @@ function Slider({
 
 function SpeakerIcon({ muted }: { muted: boolean }) {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
       <path d="M11 5 6 9H2v6h4l5 4V5z" />
       {muted ? (
         <path d="m23 9-6 6M17 9l6 6" />
