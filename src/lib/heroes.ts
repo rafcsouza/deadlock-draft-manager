@@ -13,8 +13,8 @@ export type Hero = {
   /** Retrato de sequência de abates ("on fire"), usado quando o herói é escolhido. */
   gloat: string
   color: string
-  /** Falas de seleção do herói (MP3 da API do Deadlock), tocadas quando ele é escolhido no draft. */
-  voices: string[]
+  /** Falas do herói (MP3 da API do Deadlock): pick = tom positivo, ban = tom negativo. */
+  voices: { pick: string[]; ban: string[] }
 }
 
 type ApiHero = {
@@ -47,7 +47,7 @@ async function fetchHeroes(): Promise<Hero[]> {
           gloat: h.images.hero_card_gloat_webp ?? h.images.hero_card_gloat ?? card,
           color: h.colors?.style_hex ?? "#888888",
           // O codinome interno (ex.: Abrams = "atlas") é a pasta das falas.
-          voices: voices[String(h.class_name ?? "").replace(/^hero_/, "")] ?? [],
+          voices: voices[String(h.class_name ?? "").replace(/^hero_/, "")] ?? { pick: [], ban: [] },
         }
       })
       .filter((h) => h.card)
@@ -56,29 +56,54 @@ async function fetchHeroes(): Promise<Hero[]> {
   }
 }
 
-// Falas de seleção de cada herói, por codinome: vo/<codinome>/.../<nome>_select_NN (sem as "_unselect").
-// A lista de sons da API tem 18 MB, então guardamos só esse resumo, por 1 dia.
-async function fetchHeroVoices(): Promise<Record<string, string[]>> {
+// Categorias de fala usadas no draft: vo/<codinome>/.../<nome>_<categoria>_NN.
+const VOICE_KINDS = {
+  streak: /_killstreak_start_\d+$/,
+  kill: /_kill_anyhero_\d+$/,
+  select: /_select_\d+$/,
+  unselect: /_unselect_\d+$/,
+  sad: /_sad_\d+$/,
+  death: /_pain_death_\d+$/,
+}
+type VoiceKind = keyof typeof VOICE_KINDS
+
+// Falas de cada herói, por codinome. Pick: início de sequência de abates (tom positivo); sem essa,
+// "matou um herói"; por último, a fala de seleção. Ban: a fala de quando o jogador desiste do herói
+// na tela de seleção ("unselect"); sem essa, a fala triste; por último, o som de morte.
+// Ficam de fora os "emote_" (grunhidos). A lista de sons da API tem 18 MB, então guardamos só esse
+// resumo, por 1 dia.
+async function fetchHeroVoices(): Promise<Record<string, Hero["voices"]>> {
   try {
     const res = await fetch(SOUNDS_API_URL, { cache: "no-store" })
     if (!res.ok) return {}
-    const voices: Record<string, string[]> = {}
+    const found: Record<string, Record<VoiceKind, string[]>> = {}
     ;(function walk(node: unknown, path: string) {
       if (typeof node === "string") {
         const [root, code] = path.split("/")
-        if (root === "vo" && code && /_select_\d+$/.test(path) && !/_unselect_/.test(path)) (voices[code] ??= []).push(node)
+        if (root !== "vo" || !code || path.includes("emote_")) return
+        for (const kind of Object.keys(VOICE_KINDS) as VoiceKind[]) {
+          if (VOICE_KINDS[kind].test(path)) (found[code] ??= { streak: [], kill: [], select: [], unselect: [], sad: [], death: [] })[kind].push(node)
+        }
       } else if (node && typeof node === "object") {
         for (const [key, value] of Object.entries(node)) walk(value, path ? `${path}/${key}` : key)
       }
     })(await res.json(), "")
-    return voices
+    return Object.fromEntries(
+      Object.entries(found).map(([code, v]) => [
+        code,
+        {
+          pick: v.streak.length ? v.streak : v.kill.length ? v.kill : v.select,
+          ban: v.unselect.length ? v.unselect : v.sad.length ? v.sad : v.death,
+        },
+      ]),
+    )
   } catch {
     return {}
   }
 }
 
-const getHeroVoices = unstable_cache(fetchHeroVoices, ["hero-voices-v1"], { revalidate: 86400 })
+const getHeroVoices = unstable_cache(fetchHeroVoices, ["hero-voices-v3"], { revalidate: 86400 })
 
 // A resposta completa da API passa de 2 MB (limite do cache do Next),
 // então cacheamos só a lista já filtrada, por 1 hora (heróis novos aparecem rápido).
-export const getHeroes = unstable_cache(fetchHeroes, ["heroes-v4"], { revalidate: 3600 })
+export const getHeroes = unstable_cache(fetchHeroes, ["heroes-v6"], { revalidate: 3600 })

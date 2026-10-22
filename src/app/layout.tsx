@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Geist, Oswald } from "next/font/google"
 import { ClickSounds } from "@/components/click-sounds"
+import { FloatingSoundMenu } from "@/components/sound-toggle"
 import { site } from "@/lib/site"
 import "./globals.css"
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR" className={`${geist.variable} ${oswald.variable}`}>
       <body className="min-h-screen">
         <ClickSounds />
+        <FloatingSoundMenu />
         {children}
       </body>
     </html>

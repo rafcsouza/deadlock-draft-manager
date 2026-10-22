@@ -9,6 +9,7 @@ import { formatDateTime, formatDuration, playerName } from "@/lib/format"
 import { getHeroes, type Hero } from "@/lib/heroes"
 import { getItems, type ShopItem } from "@/lib/items"
 import { BackLink } from "@/components/back-link"
+import { SoundMenu } from "@/components/sound-toggle"
 import { getProfilesBySteam } from "@/lib/players"
 
 export const metadata = { title: "Histórico de partidas" }
@@ -34,6 +35,7 @@ export default async function HistoryPage() {
         <BackLink />
         <h1 className="font-display text-2xl font-bold uppercase tracking-wide">Histórico de partidas</h1>
         <span className="ml-auto text-xs text-muted-foreground">{drafts.length} partidas</span>
+        <SoundMenu label />
       </header>
 
       <ImportMatchForm heroes={heroList.map((h) => ({ id: h.id, name: h.name, card: h.card }))} />
@@ -95,7 +97,7 @@ function MatchCard({
                     src={h.card}
                     alt={h.name}
                     title={`${h.name} · ${playerName(p)}`}
-                    className={`h-7 w-7 rounded border-b-2 object-cover object-top ${draft.winner === team ? "" : "opacity-50 grayscale"}`}
+                    className={`h-7 w-7 rounded border-b-2 hero-face ${draft.winner === team ? "" : "opacity-50 grayscale"}`}
                     style={{ borderColor: TEAM_COLORS[team] }}
                   />
                 ) : null

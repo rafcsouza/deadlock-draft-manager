@@ -224,7 +224,7 @@ function ReviewEditor({
                       <div className="flex items-center gap-1.5">
                         {hero && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={hero.card} alt="" className="h-6 w-6 shrink-0 rounded object-cover object-top" />
+                          <img src={hero.card} alt="" className="h-6 w-6 shrink-0 rounded hero-face" />
                         )}
                         <select
                           value={p.heroId ?? ""}

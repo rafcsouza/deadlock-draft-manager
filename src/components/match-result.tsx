@@ -168,7 +168,7 @@ function StatsTable({
                   <div className="flex items-center gap-2">
                     {hero && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={hero.card} alt={hero.name} title={hero.name} className="h-7 w-7 shrink-0 rounded object-cover object-top" />
+                      <img src={hero.card} alt={hero.name} title={hero.name} className="h-7 w-7 shrink-0 rounded hero-face" />
                     )}
                     <span className={`truncate ${p.userId ? "font-semibold" : "text-muted-foreground"}`}>{playerName(p)}</span>
                     {p.mvpRank === 1 && <span className="shrink-0 rounded bg-yellow-500/20 px-1 text-[9px] font-black text-yellow-300">MVP</span>}

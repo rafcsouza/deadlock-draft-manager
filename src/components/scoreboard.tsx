@@ -70,7 +70,7 @@ export function Scoreboard({
                   <div className="flex items-center gap-2">
                     {hero && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={hero.card} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover object-top" />
+                      <img src={hero.card} alt="" className="h-9 w-9 shrink-0 rounded-full hero-face" />
                     )}
                     <div className="min-w-0">
                       <p className={`flex items-center gap-1.5 truncate font-semibold ${p.userId ? "" : "text-foreground/80"}`}>

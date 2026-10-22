@@ -2,10 +2,17 @@
 
 import { useEffect, useRef } from "react"
 import { buildSteps, COIN_SPIN_MS, TOTAL_STEPS, type RoomView } from "@/lib/draft-rules"
+import type { Hero } from "@/lib/heroes"
 import { playSound, playVoice, preloadSounds } from "@/lib/sound"
 
 // Sons dos acontecimentos da sala. Tocam quando o estado muda (para todos ouvirem o mesmo,
 // seja quem for que agiu), comparando com o estado anterior; o carregamento inicial não toca nada.
+// Quando vários acontecem juntos, eles se revezam em vez de tocar um em cima do outro.
+
+// Espera do aviso de "sua vez" quando ele chega junto com um ban/pick (para a fala do herói terminar).
+const AFTER_VOICE_MS = 1200
+// Espera da vinheta de fim depois do último pick (som de confirmar + fala).
+const END_AFTER_MS = 2200
 export function useRoomSounds({
   view,
   meId,
@@ -23,8 +30,8 @@ export function useRoomSounds({
   secondsLeft: number | null
   error: string | null
   now: number
-  // Falas de seleção de um herói (tocadas quando ele é escolhido, como no jogo).
-  voicesOf: (heroId: number) => string[]
+  // Falas do herói: a positiva quando ele é escolhido, a de morte quando é banido.
+  voicesOf: (heroId: number) => Hero["voices"]
 }) {
   const prev = useRef<{
     actions: number
@@ -50,14 +57,19 @@ export function useRoomSounds({
     prev.current = snap
     if (!p) return
 
-    // Início do draft (alguém clicou em "Iniciar draft"): som marcante, junto com a moeda.
-    if (snap.started && !p.started) playSound("draftStart")
+    // Início do draft (alguém clicou em "Iniciar draft"): a vinheta toca no lugar do giro da moeda.
+    const justStarted = snap.started && !p.started
+    if (justStarted) playSound("draftStart")
 
-    if (snap.actions > p.actions) {
+    // Ban: som de ban + fala de morte do herói. Pick: som de confirmar + fala positiva.
+    // No último passo, a vinheta de fim entra depois da fala.
+    const acted = snap.actions > p.actions
+    if (acted) {
       const step = buildSteps(view.first)[snap.actions - 1]
-      playSound(snap.actions === TOTAL_STEPS ? "finished" : step.action)
-      // Herói escolhido: a fala dele entra logo depois do som de confirmar.
-      if (step.action === "pick") void playVoice(voicesOf(view.actions[snap.actions - 1]), { delay: 0.3 })
+      const voices = voicesOf(view.actions[snap.actions - 1])
+      playSound(step.action)
+      void playVoice(step.action === "pick" ? voices.pick : voices.ban, { delay: 0.3, kind: step.action })
+      if (snap.actions === TOTAL_STEPS) window.setTimeout(() => playSound("finished"), END_AFTER_MS)
     }
     if (snap.picks > p.picks) playSound("playerPick")
     else if (snap.picks < p.picks && view.playerFirst) playSound("undo")
@@ -67,12 +79,15 @@ export function useRoomSounds({
 
     // Moeda: gira e, quando a animação termina, cai.
     if (snap.coinAt && snap.coinAt !== p.coinAt) {
-      playSound("coinSpin")
+      if (!justStarted) playSound("coinSpin")
       const landIn = snap.coinAt + COIN_SPIN_MS - now
       if (landIn > -500) window.setTimeout(() => playSound("coinLand"), Math.max(0, landIn))
     }
 
-    if (snap.myTurn && !p.myTurn) playSound("yourTurn")
+    if (snap.myTurn && !p.myTurn && snap.actions < TOTAL_STEPS) {
+      if (acted) window.setTimeout(() => playSound("yourTurn"), AFTER_VOICE_MS)
+      else playSound("yourTurn")
+    }
     // now muda várias vezes por segundo; só os campos da sala importam aqui.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view.actions.length, view.playerPicks, view.chat, view.coinAt, view.playerFirst, myTurn])

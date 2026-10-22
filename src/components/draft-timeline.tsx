@@ -158,7 +158,7 @@ function Slot({ column: c, row, n, labels }: { column: Column; row: Team; n: num
             <img
               src={c.kind === "ban" ? c.hero.critical : c.hero.card}
               alt=""
-              className={`h-full w-full object-cover object-top ${c.kind === "ban" ? "opacity-60 grayscale" : ""}`}
+              className={`h-full w-full hero-face ${c.kind === "ban" ? "opacity-60 grayscale" : ""}`}
             />
             {c.kind === "ban" && <span className="absolute inset-0 flex items-center justify-center text-sm font-black text-red-500">✕</span>}
             {c.auto && <span className="absolute right-0 top-0 rounded-bl bg-black/80 px-0.5 text-[7px] leading-tight text-yellow-300">⏱</span>}

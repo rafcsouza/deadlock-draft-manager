@@ -8,7 +8,7 @@ import { MatchResultPanel } from "@/components/match-result"
 import { EmptySlot, HostBadge, PlayerAvatar, PlayerRow } from "@/components/player-avatar"
 import { RoomChat } from "@/components/room-chat"
 import { RoomClosed } from "@/components/room-closed"
-import { SoundToggle } from "@/components/sound-toggle"
+import { SoundMenu } from "@/components/sound-toggle"
 import {
   buildPlayerSteps,
   buildSteps,
@@ -111,7 +111,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
     secondsLeft: current ? Math.max(remaining, 0) : null,
     error,
     now,
-    voicesOf: (heroId) => heroById.get(heroId)?.voices ?? [],
+    voicesOf: (heroId) => heroById.get(heroId)?.voices ?? { pick: [], ban: [] },
   })
   const pickPlayer = (playerId: string | null | undefined) => {
     if (playerId && canPickPlayer) send({ type: "pickPlayer", playerId })
@@ -169,7 +169,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             Voltar
           </Link>
           <HelpButton />
-          <SoundToggle />
+          <SoundMenu align="left" />
         </div>
         <div className="space-y-2.5 border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
@@ -324,7 +324,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
           style={{ "--turn-color": turnColor } as React.CSSProperties}
         >
           {/* 5. De quem é a vez */}
-          <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-border px-14">
+          <div className="relative flex h-16 shrink-0 items-center justify-center border-b border-border pl-3 pr-24 sm:px-44">
             <TimerSettings
               value={view.turnSeconds}
               onChange={(seconds) => send({ type: "turnSeconds", seconds })}
@@ -374,6 +374,9 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 canRestart={canManage}
                 onRestart={() => send({ type: "restart" })}
               />
+            )}
+            {current && view.deadline && (
+              <TimeBar left={view.deadline - now} total={view.turnSeconds * 1000} color={current.action === "ban" ? "var(--turn-ban)" : "var(--turn-pick)"} />
             )}
           </div>
           {/* Os cards são dimensionados para todos caberem na área, sem rolagem. */}
@@ -707,6 +710,21 @@ function TurnBanner({
   )
 }
 
+// Barra na borda de baixo da faixa da vez: esvazia conforme o tempo do turno acaba e fica vermelha
+// nos últimos 10 segundos.
+function TimeBar({ left, total, color }: { left: number; total: number; color: string }) {
+  const fraction = Math.min(1, Math.max(0, left / Math.max(total, 1)))
+  const urgent = left <= 10_000
+  return (
+    <div className="absolute inset-x-0 -bottom-px h-1.5 overflow-hidden bg-muted/40" role="progressbar" aria-label="Tempo do turno" aria-valuenow={Math.round(fraction * 100)}>
+      <div
+        className={`h-full transition-[width,background-color] duration-300 ease-linear ${urgent ? "animate-pulse" : ""}`}
+        style={{ width: `${fraction * 100}%`, background: urgent ? "#ef4444" : color, boxShadow: `0 0 10px ${urgent ? "#ef4444" : color}` }}
+      />
+    </div>
+  )
+}
+
 function TimerSettings({
   value,
   onChange,
@@ -735,14 +753,24 @@ function TimerSettings({
     <div className="absolute inset-y-0 right-3 z-30 flex items-center">
       <button
         onClick={() => setOpen(!open)}
-        aria-label="Configurações do draft"
+        aria-label={`Tempo por turno: ${value} segundos${locked ? "" : " (clique para mudar)"}`}
+        title={locked ? "Tempo por turno" : "Mudar o tempo por turno"}
         aria-expanded={open}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition-colors hover:bg-muted hover:text-foreground ${
+          open ? "border-foreground/40 bg-muted text-foreground" : "border-border text-muted-foreground"
+        }`}
       >
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3" />
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="13" r="8" />
+          <path d="M12 9v4l2.5 2.5M9 2h6" />
         </svg>
+        <span className="font-mono tabular-nums">{value}s</span>
+        <span className="hidden sm:inline">por turno</span>
+        {!locked && (
+          <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        )}
       </button>
 
       {open && (
@@ -808,7 +836,7 @@ function HeroIcon({ hero, banned }: { hero?: Hero; banned?: boolean }) {
       src={banned ? portrait(hero, "ban") : hero.card}
       alt={hero.name}
       title={hero.name}
-      className={`h-9 w-9 rounded-md object-cover object-top ${banned ? "border border-red-600/70" : ""}`}
+      className={`h-9 w-9 rounded-md hero-face ${banned ? "border border-red-600/70" : ""}`}
     />
   )
 }
@@ -1039,8 +1067,7 @@ function HelpButton() {
               <li>O chat mostra as mensagens gerais e as do seu time juntas (as do time com a etiqueta TIME). Dá para mandar imagens e GIFs; nada fica salvo depois que a sala fecha.</li>
               <li>O dono da sala pode adicionar jogadores fictícios para testar.</li>
               <li>
-                O alto-falante no topo liga e desliga os sons. Para escolher os sons de cada momento, abra{" "}
-                <a href="/sons" target="_blank" className="text-foreground underline">a página de sons</a>.
+                O alto-falante no topo abre os ajustes de som: ligar e desligar, volume, falas dos heróis e o som de cada momento.
               </li>
             </ul>
           </div>

@@ -8,6 +8,7 @@ import { getHeroes } from "@/lib/heroes"
 import { getLeaderboard, MIN_MATCHES } from "@/lib/leaderboard"
 import { getAccountLinks, getProfilesBySteam } from "@/lib/players"
 import { BackLink } from "@/components/back-link"
+import { SoundMenu } from "@/components/sound-toggle"
 import { toSteam64 } from "@/lib/steam"
 
 export const metadata = { title: "Perfil do jogador" }
@@ -56,6 +57,9 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
     <main className="mx-auto min-h-screen max-w-5xl space-y-5 px-4 py-8">
       <header className="flex items-center gap-3">
         <BackLink href="/leaderboards" label="Voltar ao leaderboard" />
+        <div className="ml-auto">
+          <SoundMenu label />
+        </div>
       </header>
 
       <section className="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card/80 p-5">
@@ -112,7 +116,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
               <div key={heroId} className="flex items-center gap-2 rounded-lg bg-muted/50 py-1 pl-1 pr-3">
                 {hero && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={hero.card} alt="" className="h-9 w-9 rounded object-cover object-top" />
+                  <img src={hero.card} alt="" className="h-9 w-9 rounded hero-face" />
                 )}
                 <div className="text-xs">
                   <p className="font-semibold">{hero?.name ?? "?"}</p>
@@ -153,7 +157,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
                       <span className="flex items-center gap-2">
                         {hero && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={hero.card} alt="" className="h-7 w-7 rounded object-cover object-top" />
+                          <img src={hero.card} alt="" className="h-7 w-7 rounded hero-face" />
                         )}
                         <span className="text-xs">{hero?.name}</span>
                         {me.mvpRank === 1 && <span className="rounded bg-yellow-500/25 px-1 text-[9px] font-black text-yellow-300">MVP</span>}

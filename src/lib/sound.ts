@@ -117,6 +117,7 @@ export const SOUNDS: Record<SoundEvent, { label: string; options: SoundOption[] 
   tick: {
     label: "Últimos 5 segundos do turno",
     options: [
+      { label: "Contagem (Deadlock)", files: ["game:ui/ui_pause_count"], loudness: 0.02, maxDuration: 0.35 },
       { label: "Tique gerado", synth: blip(1400, 0.035), volume: 0.35 },
       { label: "Tique gravado", files: ["tick-001"], volume: 0.5 },
       { label: "Tique gravado 2", files: ["tick-002"], volume: 0.5 },
@@ -173,7 +174,9 @@ export const SOUNDS: Record<SoundEvent, { label: string; options: SoundOption[] 
   finished: {
     label: "Fim do draft (marcante)",
     options: [
-      { label: "Fim de partida (Deadlock)", files: ["game:ui/match_end_01"], loudness: 0.04, maxDuration: 5 },
+      { label: "Partida concluída (Deadlock)", files: ["game:ui/ui_show_category_match_complete"], loudness: 0.04, maxDuration: 2.5 },
+      { label: "Calibração concluída (Deadlock)", files: ["game:ui/ui_calibration_complete_01"], loudness: 0.035, maxDuration: 3 },
+      { label: "Vitória (Deadlock)", files: ["game:music/music_stinger_game_over_win"], loudness: 0.04, maxDuration: 4.5 },
       {
         label: "Fanfarra e fichas",
         layers: [
@@ -219,6 +222,12 @@ const DEFAULTS: Settings = { muted: false, volume: 0.6, voice: true, voiceVolume
 let settings: Settings = DEFAULTS
 let loaded = false
 const listeners = new Set<() => void>()
+function subscribe(l: () => void) {
+  listeners.add(l)
+  return () => {
+    listeners.delete(l)
+  }
+}
 
 function load() {
   if (loaded || typeof window === "undefined") return
@@ -244,14 +253,7 @@ export const setVoiceVolume = (voiceVolume: number) => save({ voiceVolume: Math.
 export const chooseSound = (event: SoundEvent, option: number) => save({ choice: { ...settings.choice, [event]: option } })
 
 export function useSoundSettings() {
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    () => (load(), settings),
-    () => DEFAULTS,
-  )
+  return useSyncExternalStore(subscribe, () => (load(), settings), () => DEFAULTS)
 }
 
 // ---------- Tocar ----------
@@ -397,19 +399,23 @@ export function playSound(event: SoundEvent, index?: number) {
 // ---------- Falas dos heróis ----------
 
 // Volume-alvo das falas: abaixo dos efeitos, para não pegar ninguém de surpresa.
-const VOICE_LOUDNESS = 0.045
+// Pick e ban no mesmo nível: as duas são falas.
+const VOICE_LOUDNESS = { pick: 0.045, ban: 0.045 }
 let currentVoice: AudioBufferSourceNode | null = null
 
 // Toca uma das falas de seleção do herói (sorteada). Uma por vez: a nova corta a anterior.
 // force: toca mesmo com as falas desligadas (botão de teste da página de sons).
-export async function playVoice(urls: string[], { delay = 0, force = false } = {}) {
+export async function playVoice(
+  urls: string[],
+  { delay = 0, force = false, kind = "pick" }: { delay?: number; force?: boolean; kind?: keyof typeof VOICE_LOUDNESS } = {},
+) {
   load()
   if (urls.length === 0 || (!force && (settings.muted || !settings.voice))) return
   const url = urls[Math.floor(Math.random() * urls.length)]
   const volume = settings.volume * settings.voiceVolume
   if (volume <= 0) return
   currentVoice?.stop()
-  const source = await playFile(url, volume, 1, delay, { loudness: VOICE_LOUDNESS })
+  const source = await playFile(url, volume, 1, delay, { loudness: VOICE_LOUDNESS[kind] })
   if (!source) return
   currentVoice = source
   source.onended = () => {

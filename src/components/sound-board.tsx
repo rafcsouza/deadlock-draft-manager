@@ -1,22 +1,13 @@
 "use client"
 
 import { BackLink } from "@/components/back-link"
+import { SoundMenu } from "@/components/sound-toggle"
 import { useState } from "react"
-import {
-  chooseSound,
-  playSound,
-  playVoice,
-  setMuted,
-  setVoice,
-  setVoiceVolume,
-  setVolume,
-  SOUNDS,
-  useSoundSettings,
-  type SoundEvent,
-} from "@/lib/sound"
+import { chooseSound, playSound, playVoice, SOUNDS, useSoundSettings, type SoundEvent } from "@/lib/sound"
 
 // Página de sons: ouvir as opções de cada momento e escolher a preferida (fica salva neste navegador).
-export function SoundBoard({ heroes }: { heroes: { id: number; name: string; voices: string[] }[] }) {
+// Volume, mudo e falas ficam no botão "Sons" do topo.
+export function SoundBoard({ heroes }: { heroes: { id: number; name: string; voices: { pick: string[]; ban: string[] } }[] }) {
   const settings = useSoundSettings()
   const [heroId, setHeroId] = useState(heroes[0]?.id ?? 0)
   const hero = heroes.find((h) => h.id === heroId)
@@ -27,59 +18,14 @@ export function SoundBoard({ heroes }: { heroes: { id: number; name: string; voi
       <header className="mb-6 flex items-center gap-3">
         <BackLink />
         <h1 className="font-display text-2xl font-bold uppercase tracking-wide">Sons</h1>
+        <div className="ml-auto">
+          <SoundMenu label />
+        </div>
       </header>
 
-      <section className="mb-4 flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card/80 p-4">
-        <label className="flex flex-1 items-center gap-3 text-sm">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Volume</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={settings.volume}
-            onChange={(e) => setVolume(Number(e.target.value))}
-            onPointerUp={() => playSound("click")}
-            className="flex-1 accent-[var(--team-a)]"
-          />
-          <span className="w-10 text-right font-mono text-xs tabular-nums">{Math.round(settings.volume * 100)}%</span>
-        </label>
-        <button
-          onClick={() => setMuted(!settings.muted)}
-          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-            settings.muted ? "border-red-600/50 text-red-300" : "border-border text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {settings.muted ? "Sons desligados" : "Sons ligados"}
-        </button>
-      </section>
-
-      {/* Falas dos heróis: tocam quando um herói é escolhido no draft, como no jogo. */}
+      {/* Falas dos heróis: tocam quando um herói é escolhido ou banido no draft. */}
       <section className="mb-4 space-y-3 rounded-2xl border border-border bg-card/80 p-4" data-sound="none">
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="flex-1 text-sm font-semibold">Fala do herói ao ser escolhido</p>
-          <button
-            onClick={() => setVoice(!settings.voice)}
-            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-              settings.voice ? "border-green-500/50 text-green-300" : "border-border text-muted-foreground"
-            }`}
-          >
-            {settings.voice ? "Falas ligadas" : "Falas desligadas"}
-          </button>
-        </div>
-        <label className="flex items-center gap-3 text-sm">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Volume das falas</span>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={settings.voiceVolume}
-            onChange={(e) => setVoiceVolume(Number(e.target.value))}
-            className="flex-1 accent-[var(--team-a)]"
-          />
-          <span className="w-10 text-right font-mono text-xs tabular-nums">{Math.round(settings.voiceVolume * 100)}%</span>
-        </label>
+        <p className="text-sm font-semibold">Falas dos heróis (positiva no pick, de desdém no ban)</p>
         <div className="flex gap-2">
           <select
             value={heroId}
@@ -93,15 +39,23 @@ export function SoundBoard({ heroes }: { heroes: { id: number; name: string; voi
               </option>
             ))}
           </select>
-          <button onClick={() => hero && void playVoice(hero.voices, { force: true })} className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-            ▶ Ouvir uma fala
+          <button
+            onClick={() => hero && void playVoice(hero.voices.pick, { force: true, kind: "pick" })}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+          >
+            ▶ Pick
+          </button>
+          <button
+            onClick={() => hero && void playVoice(hero.voices.ban, { force: true, kind: "ban" })}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-muted"
+          >
+            ▶ Ban
           </button>
         </div>
       </section>
 
       <p className="mb-4 text-xs text-muted-foreground">
-        Clique em ▶ para ouvir e em <b className="text-foreground">Usar</b> para escolher. A escolha vale para este navegador. Cada som sai um
-        pouco diferente a cada vez, de propósito.
+        Clique em ▶ para ouvir e em <b className="text-foreground">Usar</b> para escolher. A escolha vale para este navegador. Cada som sai um pouco diferente a cada vez, de propósito.
       </p>
 
       <ul className="space-y-2" data-sound="none">
