@@ -32,6 +32,63 @@ export function SignInForm({ next }: { next: string }) {
   )
 }
 
+// Quem abre o link de uma sala sem estar logado: o nome vem primeiro e entra como visitante;
+// quem já tem conta abre o login logo abaixo.
+export function JoinRoomForms({ next }: { next: string }) {
+  const { state, onSubmit, pending } = useFormAction(signInAsGuest)
+  const [login, setLogin] = useState(false)
+
+  if (login) {
+    return (
+      <div className="w-full space-y-4">
+        <SignInForm next={next} />
+        <button type="button" onClick={() => setLogin(false)} className="text-xs text-muted-foreground hover:text-foreground">
+          ← Voltar e entrar só com um nome
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full space-y-5">
+      <form onSubmit={onSubmit} className="w-full space-y-4">
+        <input type="hidden" name="next" value={next} />
+        <Field label="Seu nome">
+          <input
+            name="nickname"
+            required
+            minLength={3}
+            maxLength={14}
+            pattern="[A-Za-z0-9_.\-]{3,14}"
+            title="3 a 14 caracteres: letras, números, ponto, hífen ou _ (sem espaço)"
+            placeholder="Como você vai aparecer na sala"
+            autoComplete="nickname"
+            autoFocus
+            className={`${inputClass} py-3 text-base`}
+          />
+        </Field>
+        <FormStatus state={state} pending={pending} />
+        <SubmitButton pending={pending} pendingText="Entrando...">
+          Entrar na sala
+        </SubmitButton>
+        <p className="text-left text-[11px] leading-snug text-muted-foreground">Entra como visitante, sem senha. Dá para trocar o nome depois.</p>
+      </form>
+      <div className="flex items-center gap-3 text-[11px] uppercase tracking-widest text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />
+        ou
+        <span className="h-px flex-1 bg-border" />
+      </div>
+      <button
+        type="button"
+        onClick={() => setLogin(true)}
+        className="h-11 w-full rounded-xl border border-border bg-muted/60 text-sm font-semibold text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+      >
+        Já tenho conta: entrar com login
+      </button>
+    </div>
+  )
+}
+
 export function SignUpForm({ next }: { next: string }) {
   const { state, onSubmit, pending } = useFormAction(signUp)
   const [question, setQuestion] = useState(SECURITY_QUESTIONS[0])
