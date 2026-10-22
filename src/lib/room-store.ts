@@ -51,6 +51,8 @@ type Room = {
   teams: Record<Team, string[]>
   playerFirst: Team | null
   playerPicks: number
+  // Jogadores na ordem em que os capitães escolheram (para desfazer a última escolha).
+  pickOrder: string[]
   playersDone: boolean
   first: Team | null
   coinAt: number | null
@@ -102,6 +104,7 @@ function getRoom(code: string, heroIds: number[]) {
       teams: { a: [], b: [] },
       playerFirst: null,
       playerPicks: 0,
+      pickOrder: [],
       playersDone: false,
       first: null,
       coinAt: null,
@@ -183,6 +186,7 @@ function viewFor(room: Room, userId: string): RoomView {
     teams: { a: room.teams.a.map(player), b: room.teams.b.map(player) },
     playerFirst: room.playerFirst,
     playerPicks: room.playerPicks,
+    lastPick: room.actions.length === 0 ? (room.pickOrder.at(-1) ?? null) : null,
     playersDone: room.playersDone,
     first: room.first,
     coinAt: room.coinAt,
@@ -271,6 +275,7 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
       room.playerFirst = Math.random() < 0.5 ? "a" : "b"
       room.coinAt = Date.now()
       room.playerPicks = 0
+      room.pickOrder = []
       if (lobbyIds(room).length === 0) finishPlayerPicks(room)
       return null
     }
@@ -283,9 +288,30 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
       const playerId = String(action.playerId)
       if (!lobbyIds(room).includes(playerId)) return "Esse jogador não está na sala de espera."
       room.teams[team].push(playerId)
+      room.pickOrder.push(playerId)
       room.playerPicks++
       if (room.playerPicks >= buildPlayerSteps(room.playerFirst!).length || lobbyIds(room).length === 0) {
         finishPlayerPicks(room)
+      }
+      return null
+    }
+
+    case "undoPick": {
+      // Desfaz a última escolha de jogador (ex.: clicou no jogador errado). A vez volta para quem escolheu.
+      // Vale até o primeiro herói; desfazer a escolha que fechou os times reabre a escolha de jogadores.
+      const last = room.pickOrder.at(-1)
+      if (!last || room.actions.length > 0) return "Não há escolha de jogador para desfazer."
+      const team = teamOf(room, last)
+      if (!team || !actsForTeam(room, userId, team)) return "Só o capitão que escolheu pode desfazer."
+      room.teams[team] = room.teams[team].filter((id) => id !== last)
+      room.pickOrder.pop()
+      room.playerPicks--
+      if (room.playersDone) {
+        room.playersDone = false
+        room.first = null
+        room.deadline = null
+        if (room.timer) clearTimeout(room.timer)
+        room.timer = null
       }
       return null
     }
@@ -326,6 +352,7 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
       room.teams = { a: room.teams.a.slice(0, 1), b: room.teams.b.slice(0, 1) }
       room.playerFirst = null
       room.playerPicks = 0
+      room.pickOrder = []
       room.playersDone = false
       room.first = null
       room.coinAt = null

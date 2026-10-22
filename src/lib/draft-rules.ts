@@ -101,6 +101,8 @@ export type RoomView = {
   // playerFirst: time que ganhou a moeda e escolhe jogador primeiro; o outro começa nos heróis.
   playerFirst: Team | null
   playerPicks: number
+  // Último jogador escolhido pelos capitães, enquanto ainda dá para desfazer (antes do primeiro herói).
+  lastPick: string | null
   playersDone: boolean
   first: Team | null
   coinAt: number | null
@@ -119,6 +121,7 @@ export type RoomAction =
   | { type: "randomizeCaptains" }
   | { type: "startDraft" }
   | { type: "pickPlayer"; playerId: string }
+  | { type: "undoPick" }
   | { type: "endPlayerPicks" }
   | { type: "choose"; heroId: number }
   | { type: "turnSeconds"; seconds: number }

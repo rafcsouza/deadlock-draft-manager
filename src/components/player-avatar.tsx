@@ -68,6 +68,71 @@ export function PlayerAvatar({ player, isMe, captain, host, selected, offline, d
   )
 }
 
+// Foto (ou iniciais) do jogador, sem interação.
+function Face({ player, className }: { player: Player; className: string }) {
+  return (
+    <span
+      className={`flex items-center justify-center overflow-hidden rounded-lg font-bold uppercase text-white ${className}`}
+      style={{ background: `hsl(${hue(player.name)} 35% 32%)` }}
+    >
+      {player.avatar ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={player.avatar} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initials(player.name)
+      )}
+    </span>
+  )
+}
+
+// Linha da sala de espera: avatar à esquerda e o nome escrito. action: rótulo à direita (ex.: "Escolher").
+export function PlayerRow({
+  player,
+  isMe,
+  host,
+  selected,
+  draggable,
+  onClick,
+  action,
+}: {
+  player: Player
+  isMe?: boolean
+  host?: boolean
+  selected?: boolean
+  draggable?: boolean
+  onClick?: () => void
+  action?: string
+}) {
+  const tags = [host && "dono da sala", player.bot && "fictício", player.guest && "visitante"].filter(Boolean).join(" · ")
+  return (
+    <button
+      type="button"
+      draggable={draggable}
+      onDragStart={(e) => e.dataTransfer.setData("text/plain", player.id)}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick?.()
+      }}
+      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
+        onClick ? "hover:bg-muted" : "cursor-default"
+      } ${draggable ? "cursor-grab" : ""} ${selected ? "bg-muted ring-1 ring-foreground/40" : ""}`}
+    >
+      <span className="relative shrink-0">
+        <Face player={player} className="h-8 w-8 text-xs" />
+        {host && <HostBadge className="absolute -bottom-1 -right-1 h-4 w-4" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold">
+          {player.name}
+          {isMe && <span className="font-normal text-muted-foreground"> (você)</span>}
+        </span>
+        {tags && <span className="block truncate text-[11px] text-muted-foreground">{tags}</span>}
+      </span>
+      {action && <span className="bg-team-gradient shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold text-white">{action}</span>}
+    </button>
+  )
+}
+
 // Quadrado vazio do time. Com onJoin, vira um "+" para o jogador entrar com um clique.
 export function EmptySlot({ captain, onJoin }: { captain?: boolean; onJoin?: () => void }) {
   const crown = captain && <Crown className="absolute -top-3 left-1/2 h-4 w-4 -translate-x-1/2 opacity-30" />

@@ -3,9 +3,8 @@
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CoinFlip } from "@/components/coin-flip"
-import { Logo } from "@/components/logo"
 import { MatchResultPanel } from "@/components/match-result"
-import { EmptySlot, HostBadge, PlayerAvatar } from "@/components/player-avatar"
+import { EmptySlot, HostBadge, PlayerAvatar, PlayerRow } from "@/components/player-avatar"
 import { RoomChat } from "@/components/room-chat"
 import {
   buildPlayerSteps,
@@ -102,6 +101,9 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
   const pickPlayer = (playerId: string | null | undefined) => {
     if (playerId && canPickPlayer) send({ type: "pickPlayer", playerId })
   }
+  // Último jogador escolhido: o capitão daquele time pode desfazer (até o primeiro herói).
+  const lastPickTeam = (["a", "b"] as const).find((t) => teams[t].some((p) => p.id === view.lastPick)) ?? null
+  const undoable = lastPickTeam && actsFor(lastPickTeam) ? view.lastPick : null
 
   const heroesOf = (team: Team, action: Step["action"]) =>
     actions
@@ -141,14 +143,23 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4 lg:h-screen lg:flex-row lg:p-6">
       {/* 1. Sala de espera (metade de cima) e chat (metade de baixo) */}
       <aside className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card/80 lg:w-64 lg:shrink-0">
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-          <Link href="/" aria-label="Voltar para o início">
-            <Logo className="h-5 w-5" />
+        <div className="flex items-center gap-1 border-b border-border p-2">
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 12H5M11 18l-6-6 6-6" />
+            </svg>
+            Voltar
           </Link>
-          <h2 className="font-display text-sm font-bold uppercase tracking-wider">Sala de espera</h2>
-          <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-            {view.lobby.length}
-          </span>
+          <HelpButton />
+        </div>
+        <div className="space-y-2.5 border-b border-border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-sm font-bold uppercase tracking-wider">Sala de espera</h2>
+            <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{view.lobby.length}</span>
+          </div>
           <CopyLinkButton />
         </div>
         {view.host && (
@@ -176,24 +187,27 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
           }}
           className="flex min-h-40 flex-col lg:min-h-0 lg:flex-1 lg:basis-0"
         >
-          <div className="flex flex-1 flex-wrap content-start gap-2 overflow-y-auto p-4 pb-10">
+          <div className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-2">
             {view.lobby.map((p) => {
               // Antes do draft: você se move (ou o anfitrião move um fictício) para a vaga de capitão.
               // Na escolha de jogadores: o capitão da vez clica (ou arrasta) para escolher.
               const movable = !started && (p.id === meId || (isHost && p.bot))
               return (
-                <PlayerAvatar
+                <PlayerRow
                   key={p.id}
                   player={p}
                   isMe={p.id === meId}
                   host={p.id === view.hostId}
                   selected={selected === p.id}
                   draggable={movable || canPickPlayer}
-                  onClick={() => {
-                    if (canPickPlayer) pickPlayer(p.id)
-                    else if (movable) setSelected(selected === p.id ? null : p.id)
-                  }}
-                  hint={canPickPlayer ? "Clique para escolher" : undefined}
+                  onClick={
+                    canPickPlayer
+                      ? () => pickPlayer(p.id)
+                      : movable
+                        ? () => setSelected(selected === p.id ? null : p.id)
+                        : undefined
+                  }
+                  action={canPickPlayer ? "Escolher" : undefined}
                 />
               )
             })}
@@ -201,25 +215,16 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             {isHost && !view.playersDone && (
               <button
                 onClick={() => send({ type: "addBot" })}
-                title="Adicionar jogador fictício"
-                aria-label="Adicionar jogador fictício"
-                className="flex h-11 w-11 items-center justify-center rounded-lg border border-dashed border-border text-lg text-muted-foreground hover:border-foreground hover:text-foreground"
+                className="mt-1 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-border px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
               >
-                +
+                <span className="flex h-8 w-8 items-center justify-center text-lg">+</span>
+                Adicionar jogador fictício
               </button>
             )}
             {view.lobby.length === 0 && !isHost && (
               <p className="w-full pt-4 text-center text-xs text-muted-foreground">Ninguém aguardando.</p>
             )}
           </div>
-          <p className="px-4 pb-3 text-[11px] leading-snug text-muted-foreground">
-            {!started
-              ? "Primeiro, os capitães: clique no + de um time para ser o capitão dele. Depois, inicie o draft e os capitães escolhem os jogadores."
-              : view.playersDone
-                ? "Times fechados. Quem ficou aqui não entrou em nenhum time."
-                : "Os capitães estão escolhendo os jogadores daqui."}
-            {isHost && !view.playersDone && " Como anfitrião, use o + aqui para criar jogadores fictícios e testar."}
-          </p>
         </div>
 
         <div className="flex h-80 flex-col border-t border-border lg:h-auto lg:min-h-0 lg:flex-1 lg:basis-0">
@@ -251,6 +256,8 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 canAssign={selected !== null && teams[team].length === 0 && (selected === meId || (isHost && selectedIsBot))}
                 onAdd={(playerId) => (canPickPlayer ? pickPlayer(playerId) : move(playerId ?? selected, team))}
                 onRemove={(playerId) => move(playerId, "lobby")}
+                undoable={lastPickTeam === team ? undoable : null}
+                onUndo={() => send({ type: "undoPick" })}
               />
             </div>
           ))}
@@ -774,6 +781,8 @@ function TeamCard({
   canAssign,
   onAdd,
   onRemove,
+  undoable,
+  onUndo,
 }: {
   team: Team
   players: PlayerView[]
@@ -786,6 +795,9 @@ function TeamCard({
   canAssign: boolean
   onAdd: (playerId?: string) => void
   onRemove: (playerId: string) => void
+  // Jogador que você escolheu por último e ainda pode devolver à sala de espera.
+  undoable: string | null
+  onUndo: () => void
 }) {
   const [over, setOver] = useState(false)
   const { name, color } = TEAMS[team]
@@ -838,6 +850,7 @@ function TeamCard({
           }
           // Antes do draft: você pode sair da vaga de capitão; o anfitrião também tira os fictícios.
           const removable = !locked && (p.id === meId || (isHost && p.bot))
+          const undo = p.id === undoable
           return (
             <PlayerAvatar
               key={`jogador-${p.id}`}
@@ -847,12 +860,31 @@ function TeamCard({
               host={p.id === hostId}
               offline={!p.online}
               draggable={removable}
-              onClick={() => removable && onRemove(p.id)}
-              hint={removable ? (p.id === meId ? "Clique para sair do time" : "Clique para devolver à sala de espera") : undefined}
+              onClick={() => (undo ? onUndo() : removable && onRemove(p.id))}
+              hint={
+                undo
+                  ? "Clique para desfazer a escolha"
+                  : removable
+                    ? p.id === meId
+                      ? "Clique para sair do time"
+                      : "Clique para devolver à sala de espera"
+                    : undefined
+              }
             />
           )
         })}
       </div>
+      {undoable && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onUndo()
+          }}
+          className="mt-2 text-[11px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+        >
+          ↶ Desfazer escolha de {players.find((p) => p.id === undoable)?.name}
+        </button>
+      )}
       {/* Sempre visível (mesmo vazia) para o layout não mudar de altura quando o draft começa. */}
       <div className="mt-3 flex flex-wrap gap-1.5">
         <span className="mr-1 self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -878,9 +910,7 @@ function CopyLinkButton() {
   return (
     <button
       onClick={copy}
-      title="Copiar link da sala"
-      aria-label={copied ? "Link copiado" : "Copiar link da sala"}
-      className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white transition-transform hover:-translate-y-0.5 bg-team-gradient"
+      className="bg-team-gradient flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold text-white shadow-lg shadow-black/40 transition-transform hover:-translate-y-0.5"
     >
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         {copied ? (
@@ -892,11 +922,93 @@ function CopyLinkButton() {
           </>
         )}
       </svg>
-      {copied && (
-        <span className="absolute right-0 top-full z-10 mt-1.5 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-[11px] font-semibold text-background">
-          Link copiado!
-        </span>
-      )}
+      {copied ? "Link copiado!" : "Copiar link da sala"}
     </button>
+  )
+}
+
+// "Como usar": guia rápido da sala, aberto pelo botão no topo da sala de espera.
+function HelpButton() {
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open])
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        className="ml-auto flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-current text-[11px] font-black">?</span>
+        Ajuda
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="help-title"
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 text-sm shadow-2xl shadow-black/60"
+          >
+            <button
+              onClick={() => setOpen(false)}
+              aria-label="Fechar"
+              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              ✕
+            </button>
+            <h2 id="help-title" className="font-display text-xl font-bold uppercase tracking-wide">
+              Como funciona o draft
+            </h2>
+            <ol className="mt-4 space-y-3">
+              <HelpStep n={1} title="Capitães">
+                Cada time precisa de um capitão. Clique no <b>+</b> da vaga com a coroa para ser o capitão daquele time. O dono da
+                sala (★) também pode <b>randomizar</b> os capitães.
+              </HelpStep>
+              <HelpStep n={2} title="Iniciar">
+                Com os dois capitães, um deles (ou o dono da sala) clica em <b>Iniciar draft</b>. A moeda decide qual time escolhe
+                jogador primeiro.
+              </HelpStep>
+              <HelpStep n={3} title="Escolher jogadores">
+                Na sua vez, clique em <b>Escolher</b> ao lado de um jogador da sala de espera. A ordem é 1-2-2-2-2-1. Escolheu errado?
+                Clique em <b>↶ Desfazer escolha</b> no card do seu time (vale para a última escolha, antes do primeiro herói).
+              </HelpStep>
+              <HelpStep n={4} title="Heróis">
+                Começa o time que <b>não</b> escolheu jogador primeiro. Na sua vez, a área de heróis fica <b className="text-red-400">vermelha</b>{" "}
+                para banir ou <b className="text-green-400">verde</b> para escolher: clique no herói e clique de novo para confirmar. Se o
+                tempo acabar, sai um herói aleatório.
+              </HelpStep>
+              <HelpStep n={5} title="Depois da partida">
+                Informe o <b>ID da partida</b> (aparece no fim do jogo) para buscar os stats e salvar no histórico e no leaderboard.
+              </HelpStep>
+            </ol>
+            <h3 className="mt-5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Dicas</h3>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+              <li>Use <b className="text-foreground">Copiar link da sala</b> para chamar o pessoal.</li>
+              <li>A engrenagem ao lado da vez muda o tempo de cada turno (antes da primeira escolha de herói).</li>
+              <li>O chat tem a aba geral e a aba só do seu time.</li>
+              <li>O dono da sala pode adicionar jogadores fictícios para testar.</li>
+            </ul>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function HelpStep({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-3">
+      <span className="bg-team-gradient flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white">{n}</span>
+      <p className="leading-snug text-muted-foreground">
+        <b className="text-foreground">{title}.</b> {children}
+      </p>
+    </li>
   )
 }
