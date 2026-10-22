@@ -34,7 +34,7 @@ export function SignInForm({ next }: { next: string }) {
 
 // Quem abre o link de uma sala sem estar logado: o nome vem primeiro e entra como visitante;
 // quem já tem conta abre o login logo abaixo.
-export function JoinRoomForms({ next }: { next: string }) {
+export function JoinRoomForms({ next, submitLabel = "Entrar na sala" }: { next: string; submitLabel?: string }) {
   const { state, onSubmit, pending } = useFormAction(signInAsGuest)
   const [login, setLogin] = useState(false)
 
@@ -61,7 +61,7 @@ export function JoinRoomForms({ next }: { next: string }) {
             maxLength={14}
             pattern="[A-Za-z0-9_.\-]{3,14}"
             title="3 a 14 caracteres: letras, números, ponto, hífen ou _ (sem espaço)"
-            placeholder="Como você vai aparecer na sala"
+            placeholder="Como você vai aparecer nas salas"
             autoComplete="nickname"
             autoFocus
             className={`${inputClass} py-3 text-base`}
@@ -69,7 +69,7 @@ export function JoinRoomForms({ next }: { next: string }) {
         </Field>
         <FormStatus state={state} pending={pending} />
         <SubmitButton pending={pending} pendingText="Entrando...">
-          Entrar na sala
+          {submitLabel}
         </SubmitButton>
         <p className="text-left text-[11px] leading-snug text-muted-foreground">Entra como visitante, sem senha. Dá para trocar o nome depois.</p>
       </form>

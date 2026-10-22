@@ -1,7 +1,7 @@
 import "server-only"
 import { randomBytes } from "node:crypto"
 import { db } from "@/lib/db"
-import type { MatchResultView, ResultPlayer, Step, Team } from "@/lib/draft-rules"
+import type { MatchResultView, ResultPlayer, SavedPlayerPick, SavedStep, Team } from "@/lib/draft-rules"
 import { fetchMatchStats, type MatchStats } from "@/lib/match-stats"
 import { getProfilesBySteam } from "@/lib/players"
 
@@ -44,7 +44,10 @@ type DraftInfo = {
   firstTeam: Team
   turnSeconds: number
   teams: Record<Team, { id: string; name: string }[]>
-  steps: (Step & { heroId: number })[]
+  steps: SavedStep[]
+  // Moeda e ordem da escolha de jogadores.
+  playerFirst: Team | null
+  playerPicks: SavedPlayerPick[]
 }
 
 function insertMatch(row: {
@@ -59,8 +62,8 @@ function insertMatch(row: {
 }) {
   const id = randomBytes(5).toString("hex")
   db.prepare(
-    `INSERT INTO drafts (id, source, verified, room_code, finished_at, played_at, first_team, turn_seconds, team_a, team_b, steps, match_id, winner, duration_s, stats)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO drafts (id, source, verified, room_code, finished_at, played_at, first_team, turn_seconds, team_a, team_b, steps, player_first, player_picks, match_id, winner, duration_s, stats)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     row.source,
@@ -73,6 +76,8 @@ function insertMatch(row: {
     JSON.stringify(row.draft?.teams.a ?? []),
     JSON.stringify(row.draft?.teams.b ?? []),
     JSON.stringify(row.draft?.steps ?? []),
+    row.draft?.playerFirst ?? null,
+    JSON.stringify(row.draft?.playerPicks ?? []),
     row.matchId,
     row.winner,
     row.durationS,

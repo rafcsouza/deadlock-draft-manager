@@ -1,14 +1,14 @@
-import Link from "next/link"
 import { Collapsible } from "@/components/collapsible"
+import { DraftTimeline } from "@/components/draft-timeline"
 import { ImportMatchForm, VerifyMatchForm } from "@/components/import-match-form"
-import { Logo } from "@/components/logo"
 import { Scoreboard } from "@/components/scoreboard"
 import { requireUser } from "@/lib/auth"
-import { TEAM_COLORS, TEAM_NAMES, type Team } from "@/lib/draft-rules"
+import { buildPlayerSteps, TEAM_COLORS, TEAM_NAMES, type PlayerView, type Team } from "@/lib/draft-rules"
 import { listDrafts, type SavedDraft } from "@/lib/drafts"
 import { formatDateTime, formatDuration, playerName } from "@/lib/format"
 import { getHeroes, type Hero } from "@/lib/heroes"
 import { getItems, type ShopItem } from "@/lib/items"
+import { BackLink } from "@/components/back-link"
 import { getProfilesBySteam } from "@/lib/players"
 
 export const metadata = { title: "Histórico de partidas" }
@@ -31,9 +31,7 @@ export default async function HistoryPage() {
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 py-8">
       <header className="mb-6 flex items-center gap-3">
-        <Link href="/" aria-label="Voltar para o início">
-          <Logo className="h-6 w-6" />
-        </Link>
+        <BackLink />
         <h1 className="font-display text-2xl font-bold uppercase tracking-wide">Histórico de partidas</h1>
         <span className="ml-auto text-xs text-muted-foreground">{drafts.length} partidas</span>
       </header>
@@ -68,12 +66,18 @@ function MatchCard({
 }) {
   const played = draft.stats.some((p) => p.userId === meId)
   const mvp = draft.stats.find((p) => p.mvpRank === 1)
+  const captain = (team: Team) => captainOf(draft, team)
 
   const summary = (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <span className="w-44 shrink-0 font-display text-base font-bold uppercase tracking-wide">
-        <span style={{ color: TEAM_COLORS[draft.winner] }}>{TEAM_NAMES[draft.winner]}</span>{" "}
+      <span className="w-56 shrink-0 truncate font-display text-base font-bold uppercase tracking-wide">
+        <span style={{ color: TEAM_COLORS[draft.winner] }}>{teamTitle(draft, draft.winner)}</span>{" "}
         <span className="text-foreground">venceu</span>
+        {captain(draft.winner) && (
+          <span className="block font-sans text-[10px] font-semibold normal-case tracking-normal text-muted-foreground">
+            ({TEAM_NAMES[draft.winner]})
+          </span>
+        )}
       </span>
       {/* Heróis de cada time, em miniatura (o vencedor em destaque). */}
       <div className="flex items-center gap-2">
@@ -125,6 +129,8 @@ function MatchCard({
 
       {!draft.verified && <VerifyMatchForm draftId={draft.id} matchId={draft.matchId} />}
 
+      {draft.source === "draft" && <DraftLog draft={draft} heroes={heroes} />}
+
       {(["a", "b"] as const).map((team) => (
         <div key={team} className="space-y-1.5">
           <Scoreboard
@@ -134,28 +140,52 @@ function MatchCard({
             heroes={heroes}
             items={items}
             meId={meId}
+            captain={captain(team)}
           />
-          {draft.source === "draft" && <Bans team={team} draft={draft} heroes={heroes} />}
         </div>
       ))}
     </Collapsible>
   )
 }
 
-function Bans({ team, draft, heroes }: { team: Team; draft: SavedDraft; heroes: Map<number, Hero> }) {
-  const bans = draft.steps.filter((s) => s.team === team && s.action === "ban").map((s) => heroes.get(s.heroId))
-  if (bans.length === 0) return null
+// Capitão do time (primeiro jogador), só nos drafts feitos na plataforma.
+function captainOf(draft: SavedDraft, team: Team) {
+  return draft.source === "draft" ? draft.teams[team][0]?.name : undefined
+}
+
+// Como a Gamers Club: "Time <capitão>"; sem draft, o lado do jogo.
+function teamTitle(draft: SavedDraft, team: Team) {
+  const captain = captainOf(draft, team)
+  return captain ? `Time ${captain}` : TEAM_NAMES[team]
+}
+
+// Tudo o que aconteceu na sala: moeda, quem escolheu quem e os bans e picks de heróis, na ordem.
+function DraftLog({ draft, heroes }: { draft: SavedDraft; heroes: Map<number, Hero> }) {
+  const labels = { a: teamTitle(draft, "a"), b: teamTitle(draft, "b") }
+  const toView = (p: { id: string; name: string }): PlayerView => ({ id: p.id, name: p.name, avatar: null, online: true, bot: false, guest: false })
+  const first = draft.playerFirst
   return (
-    <div className="flex items-center gap-1.5 px-2">
-      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bans</span>
-      {bans.map((h, i) =>
-        h ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img key={i} src={h.critical} alt={`${h.name} (banido)`} title={`${h.name} (banido)`} className="h-7 w-7 rounded border border-red-600/70 object-cover object-top opacity-80" />
-        ) : (
-          <span key={i} className="h-7 w-7 rounded bg-muted" />
-        ),
+    <div className="space-y-2">
+      <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Draft</p>
+      {first && (
+        <p className="text-xs text-muted-foreground">
+          Moeda: <b style={{ color: TEAM_COLORS[first] }}>{labels[first]}</b> escolheu jogador primeiro, e{" "}
+          <b style={{ color: TEAM_COLORS[first === "a" ? "b" : "a"] }}>{labels[first === "a" ? "b" : "a"]}</b> começou nos heróis.
+          {draft.turnSeconds && <> Tempo por turno: {draft.turnSeconds}s.</>}
+        </p>
       )}
+      <DraftTimeline
+        playerSteps={first ? buildPlayerSteps(first) : []}
+        playerPicks={draft.playerPicks.length}
+        playersDone
+        currentPlayerPick={false}
+        teams={{ a: draft.teams.a.map(toView), b: draft.teams.b.map(toView) }}
+        heroSteps={draft.steps}
+        actions={draft.steps.map((s) => s.heroId)}
+        currentHeroStep={null}
+        heroById={heroes}
+        teamLabels={labels}
+      />
     </div>
   )
 }

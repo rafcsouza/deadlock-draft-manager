@@ -69,7 +69,7 @@ export function PlayerAvatar({ player, isMe, captain, host, selected, offline, d
 }
 
 // Foto (ou iniciais) do jogador, sem interação.
-function Face({ player, className }: { player: Player; className: string }) {
+export function PlayerFace({ player, className }: { player: Player; className: string }) {
   return (
     <span
       className={`flex items-center justify-center overflow-hidden rounded-lg font-bold uppercase text-white ${className}`}
@@ -94,6 +94,7 @@ export function PlayerRow({
   draggable,
   onClick,
   action,
+  onRemove,
 }: {
   player: Player
   isMe?: boolean
@@ -102,34 +103,52 @@ export function PlayerRow({
   draggable?: boolean
   onClick?: () => void
   action?: string
+  // Com onRemove, aparece um ✕ no fim da linha (ex.: excluir um jogador fictício).
+  onRemove?: () => void
 }) {
   const tags = [host && "dono da sala", player.bot && "fictício", player.guest && "visitante"].filter(Boolean).join(" · ")
   return (
-    <button
-      type="button"
-      draggable={draggable}
-      onDragStart={(e) => e.dataTransfer.setData("text/plain", player.id)}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick?.()
-      }}
-      className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
-        onClick ? "hover:bg-muted" : "cursor-default"
-      } ${draggable ? "cursor-grab" : ""} ${selected ? "bg-muted ring-1 ring-foreground/40" : ""}`}
-    >
-      <span className="relative shrink-0">
-        <Face player={player} className="h-8 w-8 text-xs" />
-        {host && <HostBadge className="absolute -bottom-1 -right-1 h-4 w-4" />}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">
-          {player.name}
-          {isMe && <span className="font-normal text-muted-foreground"> (você)</span>}
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        draggable={draggable}
+        onDragStart={(e) => e.dataTransfer.setData("text/plain", player.id)}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClick?.()
+        }}
+        className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
+          onClick ? "hover:bg-muted" : "cursor-default"
+        } ${draggable ? "cursor-grab" : ""} ${selected ? "bg-muted ring-1 ring-foreground/40" : ""}`}
+      >
+        <span className="relative shrink-0">
+          <PlayerFace player={player} className="h-8 w-8 text-xs" />
+          {host && <HostBadge className="absolute -bottom-1 -right-1 h-4 w-4" />}
         </span>
-        {tags && <span className="block truncate text-[11px] text-muted-foreground">{tags}</span>}
-      </span>
-      {action && <span className="bg-team-gradient shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold text-white">{action}</span>}
-    </button>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold">
+            {player.name}
+            {isMe && <span className="font-normal text-muted-foreground"> (você)</span>}
+          </span>
+          {tags && <span className="block truncate text-[11px] text-muted-foreground">{tags}</span>}
+        </span>
+        {action && <span className="bg-team-gradient shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold text-white">{action}</span>}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+          title={`Excluir ${player.name}`}
+          aria-label={`Excluir ${player.name}`}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-red-600/15 hover:text-red-300"
+        >
+          ✕
+        </button>
+      )}
+    </div>
   )
 }
 

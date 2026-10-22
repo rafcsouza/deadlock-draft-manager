@@ -77,7 +77,20 @@ export const db = globalForDb.db ?? open()
 if (process.env.NODE_ENV !== "production") globalForDb.db = db
 db.exec(SCHEMA)
 
-// Migrações simples para bancos criados antes de uma coluna existir.
-const userColumns = (db.prepare("PRAGMA table_info(users)").all() as { name: string }[]).map((c) => c.name)
+// Migrações simples para bancos criados antes de uma coluna existir. O build abre o banco em vários
+// processos ao mesmo tempo, então outro processo pode ter criado a coluna entre a checagem e o ALTER.
+function addColumn(table: string, column: string, definition: string) {
+  const columns = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+  if (columns.includes(column)) return
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  } catch (e) {
+    if (!String(e).includes("duplicate column")) throw e
+  }
+}
+
 // Visitantes: contas temporárias, sem senha, apagadas quando a sessão expira.
-if (!userColumns.includes("is_guest")) db.exec("ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0")
+addColumn("users", "is_guest", "INTEGER NOT NULL DEFAULT 0")
+// Registro do draft: time que ganhou a moeda e a ordem em que os capitães escolheram os jogadores.
+addColumn("drafts", "player_first", "TEXT")
+addColumn("drafts", "player_picks", "TEXT NOT NULL DEFAULT '[]'")

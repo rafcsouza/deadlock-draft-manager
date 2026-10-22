@@ -8,6 +8,7 @@ import { fetchMatchStats } from "@/lib/match-stats"
 import {
   buildPlayerSteps,
   buildSteps,
+  CHAT_IMAGE_MAX_BYTES,
   COIN_TOTAL_MS,
   TOTAL_STEPS,
   TURN_MAX,
@@ -41,6 +42,7 @@ type Room = {
   code: string
   heroIds: number[]
   hostId: string | null
+  open: boolean
   users: Map<string, PlayerInfo>
   connections: Map<string, Connection>
   // Quem acompanha a sala perguntando o estado (quando a conexão ao vivo não funciona): último pedido.
@@ -53,6 +55,8 @@ type Room = {
   playerPicks: number
   // Jogadores na ordem em que os capitães escolheram (para desfazer a última escolha).
   pickOrder: string[]
+  // Etapas do draft de heróis escolhidas pelo servidor porque o tempo acabou.
+  autoSteps: Set<number>
   playersDone: boolean
   first: Team | null
   coinAt: number | null
@@ -60,6 +64,8 @@ type Room = {
   turnSeconds: number
   deadline: number | null
   chat: { geral: ChatMessage[]; a: ChatMessage[]; b: ChatMessage[] }
+  // Imagens do chat, só em memória: somem quando a sala é removida (ninguém nela por um tempo).
+  images: Map<string, { type: string; data: Buffer }>
   result: MatchResultView | null
   fetchingResult: boolean
   savedDraftId: string | null
@@ -70,11 +76,24 @@ type Room = {
 const CHAT_KEEP = 100
 const POLL_ONLINE_MS = 8000
 const MAX_BOTS = 20
+const BOT_NAME_MAX = 20
 const CHAT_MAX_LENGTH = 300
+// Só as últimas imagens ficam guardadas (as mais antigas aparecem como "imagem expirada").
+const CHAT_IMAGES_KEEP = 30
+const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/
 const EMPTY_ROOM_TTL = 30 * 60 * 1000
 
-const globalForRooms = globalThis as unknown as { rooms?: Map<string, Room>; roomSweeper?: ReturnType<typeof setInterval> }
+const globalForRooms = globalThis as unknown as {
+  rooms?: Map<string, Room>
+  closedRooms?: Map<string, number>
+  roomSweeper?: ReturnType<typeof setInterval>
+}
 const rooms = (globalForRooms.rooms ??= new Map<string, Room>())
+// Salas excluídas pelo dono (código -> quando): o link para de funcionar em vez de abrir uma sala nova.
+const closedRooms = (globalForRooms.closedRooms ??= new Map<string, number>())
+const CLOSED_ROOM_TTL = 24 * 60 * 60 * 1000
+
+export const isRoomClosed = (code: string) => closedRooms.has(code)
 
 // Remove salas que ficaram vazias por muito tempo.
 globalForRooms.roomSweeper ??= setInterval(() => {
@@ -87,6 +106,7 @@ globalForRooms.roomSweeper ??= setInterval(() => {
       rooms.delete(code)
     }
   }
+  for (const [code, at] of closedRooms) if (Date.now() - at > CLOSED_ROOM_TTL) closedRooms.delete(code)
 }, 60 * 1000)
 
 function getRoom(code: string, heroIds: number[]) {
@@ -96,6 +116,8 @@ function getRoom(code: string, heroIds: number[]) {
       code,
       heroIds,
       hostId: null,
+      // Sala aberta só quando criada assim (createRoom); um link qualquer abre uma sala fechada.
+      open: false,
       users: new Map(),
       connections: new Map(),
       pollers: new Map(),
@@ -105,6 +127,7 @@ function getRoom(code: string, heroIds: number[]) {
       playerFirst: null,
       playerPicks: 0,
       pickOrder: [],
+      autoSteps: new Set(),
       playersDone: false,
       first: null,
       coinAt: null,
@@ -112,6 +135,7 @@ function getRoom(code: string, heroIds: number[]) {
       turnSeconds: TURN_MIN,
       deadline: null,
       chat: { geral: [], a: [], b: [] },
+      images: new Map(),
       result: null,
       fetchingResult: false,
       savedDraftId: null,
@@ -181,6 +205,7 @@ function viewFor(room: Room, userId: string): RoomView {
     code: room.code,
     serverNow: Date.now(),
     hostId: room.hostId,
+    open: room.open,
     host: room.hostId ? player(room.hostId) : null,
     lobby: lobbyIds(room, online).map(player),
     teams: { a: room.teams.a.map(player), b: room.teams.b.map(player) },
@@ -193,7 +218,7 @@ function viewFor(room: Room, userId: string): RoomView {
     actions: room.actions,
     turnSeconds: room.turnSeconds,
     deadline: room.deadline,
-    chat: { geral: room.chat.geral, time: myTeam ? room.chat[myTeam] : [] },
+    chat: [...room.chat.geral, ...(myTeam ? room.chat[myTeam] : [])].sort((x, y) => x.at - y.at),
     result: room.result,
     fetchingResult: room.fetchingResult,
     savedDraftId: room.savedDraftId,
@@ -204,6 +229,44 @@ function broadcast(room: Room) {
   for (const conn of room.connections.values()) {
     conn.send(JSON.stringify(viewFor(room, conn.userId)))
   }
+}
+
+// ---------- Criação e salas abertas ----------
+
+// Cria a sala já com o dono e a visibilidade escolhidos em "Criar Draft".
+export function createRoom(code: string, heroIds: number[], hostId: string, open: boolean) {
+  const room = getRoom(code, heroIds)
+  room.hostId ??= hostId
+  room.open = open
+  // Ainda sem ninguém conectado: conta como vazia até o dono entrar (some sozinha se ele desistir).
+  room.emptySince ??= Date.now()
+}
+
+export type OpenRoom = { code: string; host: string; players: number; phase: string }
+
+// Salas abertas com alguém dentro, para a página inicial.
+export function listOpenRooms(): OpenRoom[] {
+  return [...rooms.values()]
+    .filter((room) => room.open)
+    .map((room) => {
+      const online = onlineIds(room)
+      const people = [...online].filter((id) => !isBot(room, id)).length
+      return {
+        code: room.code,
+        host: (room.hostId && room.users.get(room.hostId)?.name) || "?",
+        players: online.size,
+        people,
+        phase: !started(room)
+          ? "Esperando capitães"
+          : !room.playersDone
+            ? "Escolhendo jogadores"
+            : finished(room)
+              ? "Draft terminado"
+              : "Draft de heróis",
+      }
+    })
+    .filter((r) => r.people > 0)
+    .map(({ people: _, ...r }) => r)
 }
 
 // ---------- Conexão ----------
@@ -246,10 +309,21 @@ export function applyAction(code: string, userId: string, action: RoomAction): s
   const room = rooms.get(code)
   if (!room) return "Sala não encontrada."
   if (!room.users.has(userId)) return "Você não está nesta sala."
+  if (action?.type === "closeRoom") return closeRoom(room, userId)
 
   const error = handle(room, userId, action)
   if (!error) broadcast(room)
   return error
+}
+
+// O dono exclui a sala: todos recebem o aviso de sala encerrada e o link deixa de funcionar.
+function closeRoom(room: Room, userId: string): string | null {
+  if (room.hostId !== userId) return "Só o dono pode excluir a sala."
+  for (const conn of room.connections.values()) conn.send(JSON.stringify({ ...viewFor(room, conn.userId), closed: true }))
+  if (room.timer) clearTimeout(room.timer)
+  rooms.delete(room.code)
+  closedRooms.set(room.code, Date.now())
+  return null
 }
 
 function handle(room: Room, userId: string, action: RoomAction): string | null {
@@ -353,6 +427,7 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
       room.playerFirst = null
       room.playerPicks = 0
       room.pickOrder = []
+      room.autoSteps = new Set()
       room.playersDone = false
       room.first = null
       room.coinAt = null
@@ -365,14 +440,32 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
 
     case "chat": {
       const text = String(action.text ?? "").trim().slice(0, CHAT_MAX_LENGTH)
-      if (!text) return "Mensagem vazia."
+      const image = action.image ? parseImage(String(action.image)) : null
+      if (image && "error" in image) return image.error
+      if (!text && !image) return "Mensagem vazia."
       const team = teamOf(room, userId)
-      const channel = action.channel === "time" ? team : "geral"
-      if (!channel) return "Entre em um time para usar o chat do time."
+      if (action.channel === "time" && !team) return "Entre em um time para usar o chat do time."
       const author = room.users.get(userId)?.name ?? "?"
-      const list = room.chat[channel]
-      list.push({ id: randomUUID(), authorId: userId, author, text, at: Date.now() })
+      let imageId: string | undefined
+      if (image) {
+        imageId = randomUUID()
+        room.images.set(imageId, image)
+        // Map guarda a ordem de inserção: o primeiro é o mais antigo.
+        while (room.images.size > CHAT_IMAGES_KEEP) room.images.delete(room.images.keys().next().value!)
+      }
+      const message: ChatMessage =
+        action.channel === "time" && team
+          ? { id: randomUUID(), authorId: userId, author, text, at: Date.now(), channel: "time", team, imageId }
+          : { id: randomUUID(), authorId: userId, author, text, at: Date.now(), channel: "geral", imageId }
+      const list = room.chat[message.team ?? "geral"]
+      list.push(message)
       if (list.length > CHAT_KEEP) list.splice(0, list.length - CHAT_KEEP)
+      return null
+    }
+
+    case "setOpen": {
+      if (room.hostId !== userId) return "Só o dono da sala muda quem pode entrar."
+      room.open = Boolean(action.open)
       return null
     }
 
@@ -382,8 +475,20 @@ function handle(room: Room, userId: string, action: RoomAction): string | null {
       if (room.bots.size >= MAX_BOTS) return "Limite de jogadores fictícios atingido."
       room.botCount++
       const id = `bot-${randomUUID().slice(0, 8)}`
+      // Nome escolhido pelo anfitrião (ex.: alguém que não conseguiu entrar na sala), ou "Fictício N".
+      const name = String(action.name ?? "").trim().replace(/s+/g, " ").slice(0, BOT_NAME_MAX)
       room.bots.add(id)
-      room.users.set(id, { id, name: `Fictício ${room.botCount}`, avatar: null })
+      room.users.set(id, { id, name: name || `Fictício ${room.botCount}`, avatar: null })
+      return null
+    }
+
+    case "removeBot": {
+      if (room.hostId !== userId) return "Só o anfitrião pode excluir jogadores fictícios."
+      const playerId = String(action.playerId)
+      if (!isBot(room, playerId)) return "Esse jogador não é fictício."
+      if (teamOf(room, playerId)) return "Tire o jogador do time antes de excluir."
+      room.bots.delete(playerId)
+      room.users.delete(playerId)
       return null
     }
 
@@ -464,6 +569,7 @@ function schedule(room: Room) {
     if (!currentStep(room) || !room.deadline || Date.now() < room.deadline - 50) return schedule(room)
     const available = room.heroIds.filter((id) => !room.actions.includes(id))
     if (available.length === 0) return
+    room.autoSteps.add(room.actions.length)
     choose(room, available[Math.floor(Math.random() * available.length)])
     broadcast(room)
   }, Math.max(0, room.deadline - Date.now()))
@@ -521,6 +627,22 @@ function saveDraft(room: Room, result: MatchResultView) {
     firstTeam: room.first ?? "a",
     turnSeconds: room.turnSeconds,
     teams: { a: players("a"), b: players("b") },
-    steps: room.actions.map((heroId, i) => ({ ...steps[i], heroId })),
+    steps: room.actions.map((heroId, i) => ({ ...steps[i], heroId, ...(room.autoSteps.has(i) && { auto: true }) })),
+    playerFirst: room.playerFirst,
+    playerPicks: room.pickOrder.map((id) => ({ team: teamOf(room, id) ?? "a", id, name: room.users.get(id)?.name ?? "?" })),
   })
+}
+
+// Imagem anexada no chat (data URL de PNG, JPG, WEBP ou GIF).
+function parseImage(dataUrl: string): { type: string; data: Buffer } | { error: string } {
+  const match = dataUrl.match(IMAGE_DATA_URL)
+  if (!match) return { error: "Envie uma imagem PNG, JPG, WEBP ou GIF." }
+  const data = Buffer.from(match[2], "base64")
+  if (data.length > CHAT_IMAGE_MAX_BYTES) return { error: "Imagem muito grande (máximo 3 MB)." }
+  return { type: match[1], data }
+}
+
+// Imagem do chat de uma sala (null se a sala fechou ou a imagem já saiu da memória).
+export function getRoomImage(code: string, imageId: string) {
+  return rooms.get(code)?.images.get(imageId) ?? null
 }

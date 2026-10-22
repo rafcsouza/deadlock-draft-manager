@@ -1,6 +1,6 @@
 import "server-only"
 import { db } from "@/lib/db"
-import type { ResultPlayer, Step, Team } from "@/lib/draft-rules"
+import type { ResultPlayer, SavedPlayerPick, SavedStep, Team } from "@/lib/draft-rules"
 
 export type SavedDraft = {
   id: string
@@ -12,7 +12,10 @@ export type SavedDraft = {
   firstTeam: Team | null
   turnSeconds: number | null
   teams: Record<Team, { id: string; name: string }[]>
-  steps: (Step & { heroId: number })[]
+  steps: SavedStep[]
+  // Só nos drafts da plataforma: quem ganhou a moeda e a ordem da escolha de jogadores.
+  playerFirst: Team | null
+  playerPicks: SavedPlayerPick[]
   matchId: number | null
   winner: Team
   durationS: number
@@ -29,6 +32,8 @@ type Row = {
   team_a: string
   team_b: string
   steps: string
+  player_first: Team | null
+  player_picks: string
   match_id: number | null
   winner: Team
   duration_s: number
@@ -47,6 +52,8 @@ export function listDrafts(): SavedDraft[] {
     turnSeconds: r.turn_seconds,
     teams: { a: JSON.parse(r.team_a), b: JSON.parse(r.team_b) },
     steps: JSON.parse(r.steps),
+    playerFirst: r.player_first,
+    playerPicks: JSON.parse(r.player_picks),
     matchId: r.match_id,
     winner: r.winner,
     durationS: r.duration_s,

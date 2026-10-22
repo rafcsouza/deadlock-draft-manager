@@ -14,21 +14,26 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const user = await getCurrentUser()
   if (user && !user.isGuest) redirect(next)
 
-  // Veio pelo link de uma sala: a tela pede o nome primeiro (entra como visitante), com login como alternativa.
-  const roomCode = next.startsWith("/draft/") ? next.slice("/draft/".length) : null
-  if (roomCode && ROOM_CODE_PATTERN.test(roomCode) && !user) {
+  // Quem chega sem estar logado: o nome vem primeiro (entra como visitante), com login como alternativa.
+  // Pelo link de uma sala, a tela fala da sala; pelo link da página inicial, das salas abertas.
+  if (!user) {
+    const roomCode = next.startsWith("/draft/") ? next.slice("/draft/".length) : null
+    const room = roomCode !== null && ROOM_CODE_PATTERN.test(roomCode)
     return (
       <ThemedCard>
         <div className="space-y-3">
           <Logo className="mx-auto h-8 w-8" />
-          <h1 className="font-display text-3xl font-bold uppercase tracking-wide">Entrar na sala</h1>
-          <p className="text-sm text-muted-foreground">Você foi chamado para um draft. Primeiro, diga seu nome.</p>
+          <h1 className="font-display text-3xl font-bold uppercase tracking-wide">{room ? "Entrar na sala" : site.name}</h1>
+          <p className="text-sm text-muted-foreground">
+            {room ? "Você foi chamado para um draft. Primeiro, diga seu nome." : "Diga seu nome para entrar e ver as salas de draft abertas."}
+          </p>
         </div>
-        <JoinRoomForms next={next} />
+        <JoinRoomForms next={next} submitLabel={room ? "Entrar na sala" : "Entrar"} />
       </ThemedCard>
     )
   }
 
+  // Visitante que quer entrar numa conta de verdade.
   return (
     <ThemedCard>
       <div className="space-y-3">

@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { ROOM_CODE_PATTERN, type RoomAction } from "@/lib/draft-rules"
 import { getHeroes } from "@/lib/heroes"
-import { applyAction, pollRoom, roomPlayer, submitMatch } from "@/lib/room-store"
+import { applyAction, isRoomClosed, pollRoom, roomPlayer, submitMatch } from "@/lib/room-store"
 
 export const dynamic = "force-dynamic"
 
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic"
 export async function GET(_: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   if (!ROOM_CODE_PATTERN.test(code)) return Response.json({ error: "Sala inválida." }, { status: 404 })
+  if (isRoomClosed(code)) return Response.json({ error: "Sala encerrada pelo dono.", closed: true }, { status: 410 })
   const user = await getCurrentUser()
   if (!user) return Response.json({ error: "Faça login." }, { status: 401 })
   const heroIds = (await getHeroes()).map((h) => h.id)
@@ -21,6 +22,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ code: stri
 export async function POST(request: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   if (!ROOM_CODE_PATTERN.test(code)) return Response.json({ error: "Sala inválida." }, { status: 404 })
+  if (isRoomClosed(code)) return Response.json({ error: "Sala encerrada pelo dono.", closed: true }, { status: 410 })
   const user = await getCurrentUser()
   if (!user) return Response.json({ error: "Faça login." }, { status: 401 })
 

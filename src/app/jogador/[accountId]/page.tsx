@@ -1,6 +1,4 @@
-import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
-import { Logo } from "@/components/logo"
 import { requireUser } from "@/lib/auth"
 import { avatarUrl } from "@/lib/avatar"
 import { TEAM_NAMES } from "@/lib/draft-rules"
@@ -9,6 +7,7 @@ import { formatDate, formatDuration, formatSouls } from "@/lib/format"
 import { getHeroes } from "@/lib/heroes"
 import { getLeaderboard, MIN_MATCHES } from "@/lib/leaderboard"
 import { getAccountLinks, getProfilesBySteam } from "@/lib/players"
+import { BackLink } from "@/components/back-link"
 import { toSteam64 } from "@/lib/steam"
 
 export const metadata = { title: "Perfil do jogador" }
@@ -56,12 +55,7 @@ export default async function PlayerPage({ params }: { params: Promise<{ account
   return (
     <main className="mx-auto min-h-screen max-w-5xl space-y-5 px-4 py-8">
       <header className="flex items-center gap-3">
-        <Link href="/leaderboards" aria-label="Voltar para o leaderboard">
-          <Logo className="h-6 w-6" />
-        </Link>
-        <Link href="/leaderboards" className="text-xs text-muted-foreground hover:text-foreground">
-          ← Leaderboard
-        </Link>
+        <BackLink href="/leaderboards" label="Voltar ao leaderboard" />
       </header>
 
       <section className="flex flex-wrap items-center gap-4 rounded-2xl border border-border bg-card/80 p-5">

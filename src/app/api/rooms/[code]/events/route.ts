@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { ROOM_CODE_PATTERN } from "@/lib/draft-rules"
 import { getHeroes } from "@/lib/heroes"
-import { joinRoom, roomPlayer } from "@/lib/room-store"
+import { isRoomClosed, joinRoom, roomPlayer } from "@/lib/room-store"
 
 export const dynamic = "force-dynamic"
 
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic"
 export async function GET(request: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
   if (!ROOM_CODE_PATTERN.test(code)) return new Response("Sala inválida", { status: 404 })
+  if (isRoomClosed(code)) return new Response("Sala encerrada", { status: 410 })
   const user = await getCurrentUser()
   if (!user) return new Response("Faça login", { status: 401 })
   const heroIds = (await getHeroes()).map((h) => h.id)

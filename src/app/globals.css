@@ -65,6 +65,20 @@
   }
 }
 
+/* Etapa atual da linha do tempo do draft (a cor vem de --turn-color). */
+.timeline-now {
+  animation: timeline-now 1.2s ease-in-out infinite;
+}
+@keyframes timeline-now {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 10px 1px var(--turn-color);
+  }
+}
+
 .bg-grid {
   background-image:
     linear-gradient(to right, color-mix(in oklab, var(--border) 50%, transparent) 1px, transparent 1px),

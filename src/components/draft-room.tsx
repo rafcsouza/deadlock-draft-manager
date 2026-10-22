@@ -3,9 +3,12 @@
 import Link from "next/link"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { CoinFlip } from "@/components/coin-flip"
+import { DraftTimeline, KindIcon } from "@/components/draft-timeline"
 import { MatchResultPanel } from "@/components/match-result"
 import { EmptySlot, HostBadge, PlayerAvatar, PlayerRow } from "@/components/player-avatar"
 import { RoomChat } from "@/components/room-chat"
+import { RoomClosed } from "@/components/room-closed"
+import { SoundToggle } from "@/components/sound-toggle"
 import {
   buildPlayerSteps,
   buildSteps,
@@ -26,7 +29,9 @@ import {
 import { formatDuration } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
 import { useFitGrid } from "@/lib/use-fit-grid"
+import { playSound } from "@/lib/sound"
 import { useRoom, useServerClock } from "@/lib/use-room"
+import { useRoomSounds } from "@/lib/use-room-sounds"
 
 const TEAMS: Record<Team, { name: string; color: string }> = {
   a: { name: TEAM_NAMES.a, color: TEAM_COLORS.a },
@@ -40,6 +45,7 @@ const HERO_GAP = 6
 // O estado vem do servidor em tempo real; aqui só mostramos e enviamos ações.
 export function DraftRoom({ code, heroes, meId }: { code: string; heroes: Hero[]; meId: string }) {
   const room = useRoom(code)
+  if (room.closed) return <RoomClosed />
   if (!room.view) {
     return (
       <main className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
@@ -98,6 +104,15 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
   const selectedIsBot = view.lobby.some((p) => p.id === selected && p.bot)
   const canManage = isHost || captainTeam !== null
   const canPickPlayer = pickTeam !== null && actsFor(pickTeam)
+  useRoomSounds({
+    view,
+    meId,
+    myTurn: (current !== null && actsFor(current.team)) || canPickPlayer,
+    secondsLeft: current ? Math.max(remaining, 0) : null,
+    error,
+    now,
+    voicesOf: (heroId) => heroById.get(heroId)?.voices ?? [],
+  })
   const pickPlayer = (playerId: string | null | undefined) => {
     if (playerId && canPickPlayer) send({ type: "pickPlayer", playerId })
   }
@@ -154,6 +169,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             Voltar
           </Link>
           <HelpButton />
+          <SoundToggle />
         </div>
         <div className="space-y-2.5 border-b border-border px-4 py-3">
           <div className="flex items-center gap-2">
@@ -176,6 +192,35 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
               {view.host.guest && " (visitante)"}
               {!view.host.online && " · offline"}
             </span>
+            {/* Cadeado aberto: aparece na página inicial. Fechado: só com o link. Só o dono troca e exclui a sala. */}
+            {isHost ? (
+              <span className="ml-auto flex shrink-0 items-center gap-0.5">
+                <button
+                  onClick={() => send({ type: "setOpen", open: !view.open })}
+                  title={view.open ? "Sala aberta (aparece na página inicial). Clique para trancar: só com o link." : "Sala trancada (só com o link). Clique para abrir na página inicial."}
+                  aria-label={view.open ? "Trancar a sala" : "Abrir a sala na página inicial"}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-colors hover:bg-muted ${view.open ? "text-green-300" : "text-yellow-300"}`}
+                >
+                  <LockIcon locked={!view.open} />
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm("Excluir a sala? Todo mundo nela será desconectado e o link para de funcionar.")) send({ type: "closeRoom" })
+                  }}
+                  title="Excluir a sala"
+                  aria-label="Excluir a sala"
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-600/15 hover:text-red-300"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+                  </svg>
+                </button>
+              </span>
+            ) : (
+              <span className={`ml-auto shrink-0 ${view.open ? "text-green-300" : "text-yellow-300"}`} title={view.open ? "Sala aberta" : "Sala trancada (só com o link)"}>
+                <LockIcon locked={!view.open} />
+              </span>
+            )}
           </div>
         )}
 
@@ -208,19 +253,12 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                         : undefined
                   }
                   action={canPickPlayer ? "Escolher" : undefined}
+                  onRemove={isHost && p.bot ? () => send({ type: "removeBot", playerId: p.id }) : undefined}
                 />
               )
             })}
             {/* Jogadores fictícios para testes (só o anfitrião adiciona). */}
-            {isHost && !view.playersDone && (
-              <button
-                onClick={() => send({ type: "addBot" })}
-                className="mt-1 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-border px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
-              >
-                <span className="flex h-8 w-8 items-center justify-center text-lg">+</span>
-                Adicionar jogador fictício
-              </button>
-            )}
+            {isHost && !view.playersDone && <AddBot onAdd={(name) => send({ type: "addBot", name })} />}
             {view.lobby.length === 0 && !isHost && (
               <p className="w-full pt-4 text-center text-xs text-muted-foreground">Ninguém aguardando.</p>
             )}
@@ -229,10 +267,11 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
 
         <div className="flex h-80 flex-col border-t border-border lg:h-auto lg:min-h-0 lg:flex-1 lg:basis-0">
           <RoomChat
+            code={view.code}
             messages={view.chat}
             meId={meId}
-            inTeam={myTeam !== null}
-            onSend={(channel, text) => send({ type: "chat", channel, text })}
+            myTeam={myTeam}
+            onSend={(channel, text, image) => send({ type: "chat", channel, text, image })}
           />
         </div>
       </aside>
@@ -262,6 +301,20 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             </div>
           ))}
         </div>
+
+        {/* Linha do tempo: ordem de todas as escolhas, do início ao fim. */}
+        <DraftTimeline
+          playerSteps={playerSteps}
+          playerPicks={view.playerPicks}
+          playersDone={view.playersDone}
+          currentPlayerPick={pickTeam !== null}
+          teams={teams}
+          // Antes de o servidor liberar os heróis, já se sabe quem começa: o time que não escolheu jogador primeiro.
+          heroSteps={buildSteps(view.first ?? (view.playerFirst === "a" ? "b" : view.playerFirst === "b" ? "a" : null))}
+          actions={actions}
+          currentHeroStep={current ? actions.length : null}
+          heroById={heroById}
+        />
 
         {/* 2. Heróis */}
         <section
@@ -351,9 +404,16 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                       if (marked) {
                         setPending(null)
                         send({ type: "choose", heroId: h.id })
-                      } else setPending(h.id)
+                      } else {
+                        setPending(h.id)
+                        playSound("mark")
+                      }
                     }}
-                    disabled={!clickable}
+                    // Passar o mouse num herói disponível dá o "clique" tátil (fora da vez também).
+                    onMouseEnter={() => !status && playSound("hover")}
+                    // Sem disabled: botão desativado não dispara o hover. O clique já é barrado acima.
+                    aria-disabled={!clickable}
+                    data-sound="none"
                     title={marked ? `Clique de novo para confirmar: ${h.name}` : h.name}
                     // Disponível: sem cor; ao passar o mouse, cresce em relevo e ganha a cor do herói.
                     // Na sua vez, a borda do hover ganha a cor da ação (vermelho banir, verde escolher).
@@ -402,7 +462,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                           className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-black tracking-widest text-white shadow-lg shadow-black/60"
                           style={{ background: turnColor }}
                         >
-                          <TurnIcon action={myAction} className="h-2.5 w-2.5" />
+                          <KindIcon kind={myAction} className="h-2.5 w-2.5" />
                           {myAction === "ban" ? "BAN?" : "PICK?"}
                         </span>
                         {heroGrid && heroGrid.width >= 52 && (
@@ -431,7 +491,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                           className="flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest text-white shadow-lg shadow-black/60"
                           style={{ background: turnColor }}
                         >
-                          <TurnIcon action={myAction} className="h-2.5 w-2.5" />
+                          <KindIcon kind={myAction} className="h-2.5 w-2.5" />
                           {myAction === "ban" ? "BANIR" : "ESCOLHER"}
                         </span>
                       </span>
@@ -621,7 +681,7 @@ function TurnBanner({
           className="flex animate-pulse items-center gap-2 rounded-full px-5 py-1.5 font-display text-lg font-bold uppercase tracking-wider text-white shadow-lg shadow-black/50 [animation-duration:1.6s]"
           style={{ background: turnColor }}
         >
-          <TurnIcon action={current.action} className="h-5 w-5" />
+          <KindIcon kind={current.action} className="h-5 w-5" />
           {current.action === "ban"
             ? "Sua vez de banir"
             : `Sua vez de escolher${count > 1 ? ` ${count} heróis` : ""}`}
@@ -632,7 +692,7 @@ function TurnBanner({
           style={{ borderColor: color, color }}
         >
           {name} <span className="text-foreground">{verb}</span>
-          <TurnIcon action={current.action} className="h-4 w-4" style={{ color: turnColor }} />
+          <KindIcon kind={current.action} className="h-4 w-4" style={{ color: turnColor }} />
         </span>
       )}
       <span
@@ -644,22 +704,6 @@ function TurnBanner({
         {formatDuration(seconds)}
       </span>
     </div>
-  )
-}
-
-// Ícone da ação do turno: círculo cortado para banir, check para escolher.
-function TurnIcon({ action, className, style }: { action: Step["action"]; className?: string; style?: React.CSSProperties }) {
-  return (
-    <svg className={className} style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {action === "ban" ? (
-        <>
-          <circle cx="12" cy="12" r="9" />
-          <path d="m5.6 5.6 12.8 12.8" />
-        </>
-      ) : (
-        <path d="m5 12.5 4.5 4.5L19 7.5" />
-      )}
-    </svg>
   )
 }
 
@@ -992,8 +1036,12 @@ function HelpButton() {
             <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
               <li>Use <b className="text-foreground">Copiar link da sala</b> para chamar o pessoal.</li>
               <li>A engrenagem ao lado da vez muda o tempo de cada turno (antes da primeira escolha de herói).</li>
-              <li>O chat tem a aba geral e a aba só do seu time.</li>
+              <li>O chat mostra as mensagens gerais e as do seu time juntas (as do time com a etiqueta TIME). Dá para mandar imagens e GIFs; nada fica salvo depois que a sala fecha.</li>
               <li>O dono da sala pode adicionar jogadores fictícios para testar.</li>
+              <li>
+                O alto-falante no topo liga e desliga os sons. Para escolher os sons de cada momento, abra{" "}
+                <a href="/sons" target="_blank" className="text-foreground underline">a página de sons</a>.
+              </li>
             </ul>
           </div>
         </div>
@@ -1010,5 +1058,67 @@ function HelpStep({ n, title, children }: { n: number; title: string; children: 
         <b className="text-foreground">{title}.</b> {children}
       </p>
     </li>
+  )
+}
+
+// Anfitrião adiciona um jogador fictício, com nome opcional (ex.: alguém que não conseguiu entrar na sala).
+function AddBot({ onAdd }: { onAdd: (name: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-1 flex w-full items-center gap-2.5 rounded-lg border border-dashed border-border px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
+      >
+        <span className="flex h-8 w-8 items-center justify-center text-lg">+</span>
+        Adicionar jogador fictício
+      </button>
+    )
+  }
+
+  const close = () => {
+    setOpen(false)
+    setName("")
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onAdd(name.trim())
+        close()
+      }}
+      className="mt-1 space-y-1.5 rounded-lg border border-dashed border-muted-foreground/50 p-2"
+    >
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Escape" && close()}
+        maxLength={20}
+        autoFocus
+        placeholder="Nome (opcional)"
+        aria-label="Nome do jogador fictício"
+        className="w-full rounded-md border border-border bg-muted/60 px-2.5 py-1.5 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-muted-foreground/60"
+      />
+      <div className="flex gap-1.5">
+        <button type="submit" className="bg-team-gradient flex-1 rounded-md py-1.5 text-xs font-bold text-white">
+          Adicionar
+        </button>
+        <button type="button" onClick={close} className="rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Cadeado: fechado = sala só com o link; aberto = aparece na página inicial.
+function LockIcon({ locked }: { locked: boolean }) {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d={locked ? "M8 11V7a4 4 0 0 1 8 0v4" : "M8 11V7a4 4 0 0 1 7.5-2"} />
+    </svg>
   )
 }

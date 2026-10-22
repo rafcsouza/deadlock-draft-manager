@@ -45,6 +45,11 @@ export function buildPlayerSteps(first: Team): Team[] {
   return PLAYER_ORDER.flatMap((n, i) => Array<Team>(n).fill(i % 2 === 0 ? first : other))
 }
 
+// Registro de um draft salvo no histórico.
+// auto: herói escolhido pelo servidor porque o tempo do turno acabou.
+export type SavedStep = Step & { heroId: number; auto?: boolean }
+export type SavedPlayerPick = { team: Team; id: string; name: string }
+
 export const slotsFor = (team: Team, action: Step["action"]) =>
   BASE_STEPS.filter((s) => s.team === team && s.action === action).length
 
@@ -54,7 +59,21 @@ export const slotsFor = (team: Team, action: Step["action"]) =>
 // guest: entrou como visitante, sem conta.
 export type PlayerView = { id: string; name: string; avatar: string | null; online: boolean; bot: boolean; guest: boolean }
 
-export type ChatMessage = { id: string; authorId: string; author: string; text: string; at: number }
+// Mensagem do chat da sala. channel "time" só chega a quem está naquele time.
+// imageId: imagem anexada (guardada só na memória da sala, servida por /api/rooms/[code]/images/[id]).
+export type ChatMessage = {
+  id: string
+  authorId: string
+  author: string
+  text: string
+  at: number
+  channel: "geral" | "time"
+  team?: Team
+  imageId?: string
+}
+
+// Imagens e GIFs do chat: tamanho máximo de cada arquivo.
+export const CHAT_IMAGE_MAX_BYTES = 3 * 1024 * 1024
 
 // Stats de um jogador na partida, já com o time do draft e o perfil (se o SteamID bater).
 export type ResultPlayer = {
@@ -93,6 +112,8 @@ export type RoomView = {
   code: string
   serverNow: number
   hostId: string | null
+  // Sala aberta: aparece na página inicial para qualquer um entrar. Fechada: só com o link.
+  open: boolean
   // Dono da sala (quem entrou primeiro).
   host: PlayerView | null
   lobby: PlayerView[]
@@ -109,11 +130,14 @@ export type RoomView = {
   actions: number[]
   turnSeconds: number
   deadline: number | null
-  chat: { geral: ChatMessage[]; time: ChatMessage[] }
+  // Chat geral e do seu time juntos, em ordem.
+  chat: ChatMessage[]
   // Depois do draft: resultado buscado pelo ID da partida, aguardando confirmação.
   result: MatchResultView | null
   fetchingResult: boolean
   savedDraftId: string | null
+  // Última mensagem de uma sala que o dono excluiu.
+  closed?: boolean
 }
 
 export type RoomAction =
@@ -126,8 +150,11 @@ export type RoomAction =
   | { type: "choose"; heroId: number }
   | { type: "turnSeconds"; seconds: number }
   | { type: "restart" }
-  | { type: "chat"; channel: "geral" | "time"; text: string }
-  | { type: "addBot" }
+  | { type: "chat"; channel: "geral" | "time"; text: string; image?: string }
+  | { type: "setOpen"; open: boolean }
+  | { type: "closeRoom" }
+  | { type: "addBot"; name?: string }
+  | { type: "removeBot"; playerId: string }
   | { type: "submitMatch"; matchId: string }
   | { type: "confirmResult" }
   | { type: "discardResult" }

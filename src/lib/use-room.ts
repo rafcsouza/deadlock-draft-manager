@@ -13,6 +13,8 @@ export function useRoom(code: string) {
   const [view, setView] = useState<RoomView | null>(null)
   const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // O dono excluiu a sala.
+  const [closed, setClosed] = useState(false)
   // Diferença entre o relógio do servidor e o deste navegador, para o timer bater com o de todos.
   const offset = useRef(0)
   // Quando em modo de consulta, permite buscar o estado logo depois de uma ação.
@@ -27,6 +29,14 @@ export function useRoom(code: string) {
       offset.current = next.serverNow - Date.now()
       setView(next)
       setConnected(true)
+      if (next.closed) end()
+    }
+    // Sala encerrada: para de ouvir e de perguntar.
+    const end = () => {
+      stopped = true
+      setClosed(true)
+      source.close()
+      clearTimeout(pollTimer)
     }
 
     const source = new EventSource(`/api/rooms/${code}/events`)
@@ -41,6 +51,7 @@ export function useRoom(code: string) {
       clearTimeout(pollTimer)
       try {
         const res = await fetch(`/api/rooms/${code}`, { cache: "no-store" })
+        if (res.status === 410) return end()
         if (res.ok) apply(await res.json())
         else setConnected(false)
       } catch {
@@ -92,7 +103,7 @@ export function useRoom(code: string) {
 
   const serverNow = useCallback(() => Date.now() + offset.current, [])
 
-  return { view, connected, error, send, serverNow }
+  return { view, connected, error, closed, send, serverNow }
 }
 
 // Horário do servidor atualizado algumas vezes por segundo (para timer e moeda).

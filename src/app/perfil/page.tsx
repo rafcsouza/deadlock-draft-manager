@@ -3,6 +3,7 @@ import { ChangePasswordForm, EditProfileForm, GuestNameForm } from "@/components
 import { ThemedCard } from "@/components/themed-card"
 import { requireUser } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { BackLink } from "@/components/back-link"
 import { toSteam64 } from "@/lib/steam"
 
 export const metadata = { title: "Editar perfil" }
@@ -16,9 +17,9 @@ export default async function EditProfilePage() {
   return (
     <ThemedCard>
       <div className="w-full space-y-1">
-        <Link href="/" className="block text-left text-xs text-muted-foreground hover:text-foreground">
-          ← Voltar
-        </Link>
+        <div className="text-left">
+          <BackLink />
+        </div>
         <h1 className="font-display text-3xl font-bold uppercase tracking-wide">Editar perfil</h1>
         {steamId !== null && (
           <Link href={`/jogador/${steamId}`} className="text-xs text-muted-foreground underline hover:text-foreground">
@@ -46,9 +47,9 @@ function GuestProfile({ username }: { username: string }) {
   return (
     <ThemedCard>
       <div className="w-full space-y-1">
-        <Link href="/" className="block text-left text-xs text-muted-foreground hover:text-foreground">
-          ← Voltar
-        </Link>
+        <div className="text-left">
+          <BackLink />
+        </div>
         <h1 className="font-display text-3xl font-bold uppercase tracking-wide">Seu nome</h1>
         <p className="text-xs text-muted-foreground">É o nome que aparece para os outros nas salas de draft.</p>
       </div>

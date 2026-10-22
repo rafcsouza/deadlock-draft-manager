@@ -15,6 +15,7 @@ export function Scoreboard({
   heroes,
   items,
   meId,
+  captain,
 }: {
   team: Team
   players: ResultPlayer[]
@@ -22,6 +23,8 @@ export function Scoreboard({
   heroes: Map<number, Hero>
   items: Map<number, ShopItem>
   meId: string
+  // Draft da plataforma: o time aparece como "Time <capitão>" (com o lado do jogo entre parênteses).
+  captain?: string
 }) {
   const souls = players.reduce((sum, p) => sum + p.netWorth, 0)
   // Destaques do time (como no jogo): maior valor de cada coluna.
@@ -32,7 +35,8 @@ export function Scoreboard({
     <div className="overflow-x-auto">
       <div className="mb-2 flex items-center gap-3">
         <p className="font-display text-lg font-bold uppercase tracking-wide" style={{ color: TEAM_COLORS[team] }}>
-          {TEAM_NAMES[team]}
+          {captain ? `Time ${captain}` : TEAM_NAMES[team]}
+          {captain && <span className="ml-2 font-sans text-xs font-semibold normal-case tracking-normal text-muted-foreground">({TEAM_NAMES[team]})</span>}
         </p>
         {winner && <span className="rounded bg-green-600/20 px-2 py-0.5 text-[11px] font-bold text-green-300">Vitória</span>}
         <span className="ml-auto text-xs text-muted-foreground">{formatSouls(souls)} almas</span>

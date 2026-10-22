@@ -1,8 +1,8 @@
 import Link from "next/link"
-import { Logo } from "@/components/logo"
 import { Fragment } from "react"
 import { requireUser } from "@/lib/auth"
 import { getHeroes } from "@/lib/heroes"
+import { BackLink } from "@/components/back-link"
 import { getLeaderboard, MIN_MATCHES, POINTS } from "@/lib/leaderboard"
 
 export const metadata = { title: "Leaderboards" }
@@ -15,9 +15,7 @@ export default async function LeaderboardsPage() {
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-4 py-8">
       <header className="mb-6 flex items-center gap-3">
-        <Link href="/" aria-label="Voltar para o início">
-          <Logo className="h-6 w-6" />
-        </Link>
+        <BackLink />
         <h1 className="font-display text-2xl font-bold uppercase tracking-wide">Leaderboard</h1>
         <span className="ml-auto text-xs text-muted-foreground">{rows.length} jogadores</span>
       </header>
