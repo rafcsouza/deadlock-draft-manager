@@ -18,6 +18,7 @@ import {
   TEAM_COLORS,
   TEAM_NAMES,
   TEAM_SIZE,
+  ORDER_LABELS,
   TOTAL_STEPS,
   TURN_MAX,
   TURN_MIN,
@@ -26,13 +27,14 @@ import {
   type RoomView,
   type Step,
   type Team,
+  type DraftOrder,
 } from "@/lib/draft-rules"
 import { formatDuration } from "@/lib/format"
 import type { Hero } from "@/lib/heroes"
 import { useFitGrid } from "@/lib/use-fit-grid"
-import { playSound } from "@/lib/sound"
+import { playSound, playVoice } from "@/lib/sound"
 import { useRoom, useServerClock } from "@/lib/use-room"
-import { useRoomSounds } from "@/lib/use-room-sounds"
+import { useRoomSounds, type PlayedEarly } from "@/lib/use-room-sounds"
 
 const TEAMS: Record<Team, { name: string; color: string }> = {
   a: { name: TEAM_NAMES.a, color: TEAM_COLORS.a },
@@ -64,6 +66,8 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
   const [selected, setSelected] = useState<string | null>(null)
   // Herói marcado no primeiro clique; o segundo clique no mesmo card confirma o ban/pick.
   const [pending, setPending] = useState<number | null>(null)
+  // Sons que esta tela já tocou no clique (fala do herói marcado, vinheta de início), para não repetir.
+  const playedEarly = useRef<PlayedEarly>({ hero: null, start: false })
   const { ref: heroArea, grid: heroGrid } = useFitGrid<HTMLDivElement>(heroes.length, 3 / 4, HERO_GAP)
   const heroById = useMemo(() => new Map(heroes.map((h) => [h.id, h])), [heroes])
 
@@ -79,7 +83,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
 
   const teams = view.teams
   const actions = view.actions
-  const steps = buildSteps(view.first)
+  const steps = buildSteps(view.first, view.order)
   const hasCaptains = teams.a.length > 0 && teams.b.length > 0
   // Fases: capitães → (moeda) → escolha de jogadores → draft de heróis.
   const started = view.playerFirst !== null
@@ -113,6 +117,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
     error,
     now,
     voicesOf: (heroId) => heroById.get(heroId)?.voices ?? { pick: [], ban: [] },
+    playedEarly,
   })
   const pickPlayer = (playerId: string | null | undefined) => {
     if (playerId && canPickPlayer) send({ type: "pickPlayer", playerId })
@@ -169,7 +174,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             </svg>
             Voltar
           </Link>
-          <HelpButton />
+          <HelpButton order={view.order} />
           <SoundMenu align="left" />
         </div>
         <div className="space-y-2.5 border-b border-border px-4 py-3">
@@ -178,6 +183,14 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
             <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{view.lobby.length}</span>
           </div>
           <CopyLinkButton />
+        </div>
+        {/* Ordem de bans e picks da sala, escolhida na criação. */}
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground" title={ORDER_LABELS[view.order].hint}>
+          <KindIcon kind="pick" className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate">
+            Ordem dos picks: <span className="font-semibold text-foreground">{ORDER_LABELS[view.order].name}</span>
+          </span>
+          <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">{ORDER_LABELS[view.order].pattern}</span>
         </div>
         {view.host && (
           <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-xs text-muted-foreground">
@@ -280,10 +293,8 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="grid grid-cols-2 gap-4">
           {(["a", "b"] as const).map((team) => (
-            <div key={team} className="space-y-2">
-              {/* 4. Bans do time */}
-              <BanStrip team={team} bans={heroesOf(team, "ban")} />
-              {/* 3. Time, com o capitão no primeiro quadrado */}
+            <div key={team}>
+              {/* 3. Time, com o capitão no primeiro quadrado (e os bans do time à direita) */}
               <TeamCard
                 team={team}
                 players={teams[team]}
@@ -291,6 +302,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 isHost={isHost}
                 hostId={view.hostId}
                 picks={heroesOf(team, "pick")}
+                bans={heroesOf(team, "ban")}
                 active={current?.team === team || pickTeam === team}
                 locked={started}
                 canAssign={selected !== null && teams[team].length === 0 && (selected === meId || (isHost && selectedIsBot))}
@@ -311,7 +323,7 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
           currentPlayerPick={pickTeam !== null}
           teams={teams}
           // Antes de o servidor liberar os heróis, já se sabe quem começa: o time que não escolheu jogador primeiro.
-          heroSteps={buildSteps(view.first ?? (view.playerFirst === "a" ? "b" : view.playerFirst === "b" ? "a" : null))}
+          heroSteps={buildSteps(view.first ?? (view.playerFirst === "a" ? "b" : view.playerFirst === "b" ? "a" : null), view.order)}
           actions={actions}
           currentHeroStep={current ? actions.length : null}
           heroById={heroById}
@@ -344,7 +356,14 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                 canRandomize={isHost}
                 canStart={hasCaptains && canManage}
                 onRandomize={() => send({ type: "randomizeCaptains" })}
-                onStart={() => send({ type: "startDraft" })}
+                onStart={() => {
+                  // A vinheta de início sai no clique, sem esperar o servidor confirmar.
+                  playSound("draftStart")
+                  playedEarly.current.start = true
+                  // Se o servidor recusar (ex.: falta capitão), a vinheta volta a tocar no próximo início.
+                  window.setTimeout(() => (playedEarly.current.start = false), 5000)
+                  send({ type: "startDraft" })
+                }}
               />
             ) : coinPhase ? (
               <CoinFlip
@@ -411,6 +430,9 @@ function RoomScreen({ view, connected, error, send, serverNow, heroes, meId }: R
                       } else {
                         setPending(h.id)
                         playSound("mark")
+                        // A fala do herói já sai no 1º clique (ban: desdém; pick: positiva), não só ao confirmar.
+                        void playVoice(myAction === "ban" ? h.voices.ban : h.voices.pick, { kind: myAction ?? "pick" })
+                        playedEarly.current.hero = h.id
                       }
                     }}
                     // Passar o mouse num herói disponível dá o "clique" tátil (fora da vez também).
@@ -808,15 +830,23 @@ function TimerSettings({
   )
 }
 
-function BanStrip({ team, bans }: { team: Team; bans: Hero[] }) {
-  const slots = slotsFor(team, "ban")
+// Vaga de ban no card do time: retrato de vida baixa do herói banido, ou vazia com o ícone de ban.
+function BanSlot({ hero }: { hero?: Hero }) {
+  if (!hero) {
+    return (
+      <span className="flex h-14 w-11 items-center justify-center rounded-lg border border-dashed border-border bg-muted/40 text-muted-foreground/40">
+        <KindIcon kind="ban" className="h-5 w-5" />
+      </span>
+    )
+  }
   return (
-    <div className="flex items-center justify-center gap-1.5">
-      <span className="mr-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bans</span>
-      {Array.from({ length: slots }, (_, i) => (
-        <HeroIcon key={i} hero={bans[i]} banned />
-      ))}
-    </div>
+    <span className="relative h-14 w-11 overflow-hidden rounded-lg border border-red-600/70" title={`${hero.name} (banido)`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={portrait(hero, "ban")} alt={hero.name} className="hero-face h-full w-full grayscale-[40%]" />
+      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/90 to-transparent px-0.5 pb-0.5 pt-3 text-center text-[9px] font-bold text-white">
+        {hero.name}
+      </span>
+    </span>
   )
 }
 
@@ -827,19 +857,14 @@ function portrait(hero: Hero, action?: Step["action"]) {
   return hero.card
 }
 
-function HeroIcon({ hero, banned }: { hero?: Hero; banned?: boolean }) {
+// Pick do time (card padrão do herói).
+function HeroIcon({ hero }: { hero?: Hero }) {
   if (!hero) {
     return <span className="h-9 w-9 rounded-md border border-dashed border-border bg-muted/40" />
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img
-      // Na faixa de bans usa o retrato de vida baixa; nos picks do time, o card padrão.
-      src={banned ? portrait(hero, "ban") : hero.card}
-      alt={hero.name}
-      title={hero.name}
-      className={`h-9 w-9 rounded-md hero-face ${banned ? "border border-red-600/70" : ""}`}
-    />
+    <img src={hero.card} alt={hero.name} title={hero.name} className="h-9 w-9 rounded-md hero-face" />
   )
 }
 
@@ -850,6 +875,7 @@ function TeamCard({
   isHost,
   hostId,
   picks,
+  bans,
   active,
   locked,
   canAssign,
@@ -864,6 +890,7 @@ function TeamCard({
   isHost: boolean
   hostId: string | null
   picks: Hero[]
+  bans: Hero[]
   active: boolean
   locked: boolean
   canAssign: boolean
@@ -909,6 +936,8 @@ function TeamCard({
           {players.length}/{TEAM_SIZE}
         </span>
       </div>
+      <div className="flex gap-4">
+      <div className="min-w-0 flex-1">
       <div className="mt-5 flex flex-wrap gap-2">
         {Array.from({ length: TEAM_SIZE }, (_, i) => {
           const p = players[i]
@@ -969,6 +998,17 @@ function TeamCard({
           <HeroIcon key={i} hero={picks[i]} />
         ))}
       </div>
+      </div>
+      {/* 4. Bans do time, no espaço livre à direita do card */}
+      <div className="mt-2 flex shrink-0 flex-col items-center justify-center gap-2 border-l border-border pl-3">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Bans</span>
+        <div className="flex gap-2">
+          {Array.from({ length: slotsFor(team, "ban") }, (_, i) => (
+            <BanSlot key={i} hero={bans[i]} />
+          ))}
+        </div>
+      </div>
+      </div>
     </div>
   )
 }
@@ -1003,7 +1043,7 @@ function CopyLinkButton() {
 }
 
 // "Como usar": guia rápido da sala, aberto pelo botão no topo da sala de espera.
-function HelpButton() {
+function HelpButton({ order }: { order: DraftOrder }) {
   const [open, setOpen] = useState(false)
   useEffect(() => {
     if (!open) return
@@ -1055,7 +1095,9 @@ function HelpButton() {
                 Clique em <b>↶ Desfazer escolha</b> no card do seu time (vale para a última escolha, antes do primeiro herói).
               </HelpStep>
               <HelpStep n={4} title="Heróis">
-                Começa o time que <b>não</b> escolheu jogador primeiro. Na sua vez, a área de heróis fica <b className="text-red-400">vermelha</b>{" "}
+                Começa o time que <b>não</b> escolheu jogador primeiro. Esta sala usa a ordem{" "}
+                <b>{ORDER_LABELS[order].name.toLowerCase()}</b> ({ORDER_LABELS[order].hint.charAt(0).toLowerCase() + ORDER_LABELS[order].hint.slice(1)}); a
+                linha do tempo acima dos heróis mostra a sequência inteira. Na sua vez, a área de heróis fica <b className="text-red-400">vermelha</b>{" "}
                 para banir ou <b className="text-green-400">verde</b> para escolher: clique no herói e clique de novo para confirmar. Se o
                 tempo acabar, sai um herói aleatório.
               </HelpStep>
@@ -1066,7 +1108,7 @@ function HelpButton() {
             <h3 className="mt-5 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Dicas</h3>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
               <li>Use <b className="text-foreground">Copiar link da sala</b> para chamar o pessoal.</li>
-              <li>A engrenagem ao lado da vez muda o tempo de cada turno (antes da primeira escolha de herói).</li>
+              <li>O botão ⏱ ao lado da vez muda o tempo de cada turno (antes da primeira escolha de herói).</li>
               <li>O chat mostra as mensagens gerais e as do seu time juntas (as do time com a etiqueta TIME). Dá para mandar imagens e GIFs; nada fica salvo depois que a sala fecha.</li>
               <li>O dono da sala pode adicionar jogadores fictícios para testar.</li>
               <li>

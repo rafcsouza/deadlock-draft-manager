@@ -1,4 +1,5 @@
 import { Collapsible } from "@/components/collapsible"
+import { dayOf, HistoryFilters, HistorySummary, KillScore, type HistoryFilter } from "@/components/history-extras"
 import { TeamIcon } from "@/components/team-icon"
 import { DraftTimeline } from "@/components/draft-timeline"
 import { ImportMatchForm, VerifyMatchForm } from "@/components/import-match-form"
@@ -15,8 +16,10 @@ import { getProfilesBySteam } from "@/lib/players"
 
 export const metadata = { title: "Histórico de partidas" }
 
-export default async function HistoryPage() {
+export default async function HistoryPage({ searchParams }: { searchParams: Promise<{ filtro?: string }> }) {
   const user = await requireUser("/historico")
+  const asked = (await searchParams).filtro
+  const filter: HistoryFilter = asked === "minhas" || asked === "pendentes" ? asked : "todas"
   // Nome e perfil de cada jogador vêm dos perfis atuais (pelo SteamID), não do que foi gravado na importação.
   const profiles = getProfilesBySteam()
   const drafts = listDrafts().map((d) => ({
@@ -29,6 +32,19 @@ export default async function HistoryPage() {
   const [heroList, itemList] = await Promise.all([getHeroes(), getItems()])
   const heroes = new Map(heroList.map((h) => [h.id, h]))
   const items = new Map(itemList.map((i) => [i.id, i]))
+  const meId = String(user.id)
+
+  const mine = (d: SavedDraft) => d.stats.some((p) => p.userId === meId)
+  const counts = { todas: drafts.length, minhas: drafts.filter(mine).length, pendentes: drafts.filter((d) => !d.verified).length }
+  const shown = drafts.filter((d) => (filter === "minhas" ? mine(d) : filter === "pendentes" ? !d.verified : true))
+  // Agrupa por dia (a lista já vem da mais recente para a mais antiga); pendentes ficam no fim.
+  const days: { key: string; label: string; drafts: typeof shown }[] = []
+  for (const d of [...shown.filter((x) => x.verified), ...shown.filter((x) => !x.verified)]) {
+    const { key, label } = dayOf(d)
+    const last = days[days.length - 1]
+    if (last?.key === key) last.drafts.push(d)
+    else days.push({ key, label, drafts: [d] })
+  }
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-4 py-8">
@@ -39,6 +55,8 @@ export default async function HistoryPage() {
         <SoundMenu label />
       </header>
 
+      <HistorySummary drafts={drafts} heroes={heroes} />
+
       <ImportMatchForm heroes={heroList.map((h) => ({ id: h.id, name: h.name, card: h.card }))} />
 
       {drafts.length === 0 ? (
@@ -46,11 +64,28 @@ export default async function HistoryPage() {
           Nenhuma partida no histórico ainda.
         </p>
       ) : (
-        <ul className="space-y-2">
-          {drafts.map((d) => (
-            <MatchCard key={d.id} draft={d} heroes={heroes} items={items} meId={String(user.id)} />
+        <>
+          <HistoryFilters filter={filter} counts={counts} />
+          {shown.length === 0 && (
+            <p className="rounded-2xl border border-border bg-card/80 p-8 text-center text-sm text-muted-foreground">Nenhuma partida aqui.</p>
+          )}
+          {days.map((day) => (
+            <section key={day.key} className="mb-4">
+              <h2 className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                {day.label}
+                <span className="font-mono font-normal opacity-60">
+                  {day.drafts.length} {day.drafts.length === 1 ? "partida" : "partidas"}
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </h2>
+              <ul className="space-y-2">
+                {day.drafts.map((d) => (
+                  <MatchCard key={d.id} draft={d} heroes={heroes} items={items} meId={meId} />
+                ))}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </>
       )}
     </main>
   )
@@ -110,6 +145,7 @@ function MatchCard({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {/* Partidas de print não têm o horário real (só depois de vincular pela API). */}
         {draft.verified && <span>{formatDateTime(draft.playedAt)}</span>}
+        <KillScore draft={draft} />
         <span className="font-mono">{formatDuration(draft.durationS)}</span>
         {!draft.verified && <span className="rounded-full bg-yellow-600/20 px-2 py-0.5 font-semibold text-yellow-300">Pendente</span>}
         {played && <span className="rounded-full bg-muted px-2 py-0.5 font-semibold text-foreground">Você jogou</span>}

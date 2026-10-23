@@ -82,6 +82,10 @@ A pasta [`deploy/`](deploy) tem scripts para um servidor Ubuntu (testados no pla
 - `update.sh`: atualiza o site com a versão mais recente do repositório.
 - `backup.sh`: copia o banco todo dia (localmente e, se configurado, para um bucket de armazenamento).
 
+### No próprio PC (Windows)
+
+A pasta [`deploy/windows/`](deploy/windows) tem um atalho para subir o site com um clique, sem janela aberta: `criar-atalho.ps1` cria o "Tatinuanga Draft" na área de trabalho, e o `manter-site.ps1` sobe o `npm start` e religa sozinho se ele cair (log em `data/site.log`). Para ligar junto com o Windows, copie o atalho para `shell:startup`. Para atualizar, crie `data/site-pausado`, pare o processo do site, rode `npm run build` e apague o arquivo. Para publicar com endereço fixo sem expor o IP de casa, dá para usar o [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) (`tailscale funnel --bg 3000`).
+
 ## Como o draft funciona
 
 | Fase | O que acontece |
@@ -89,7 +93,7 @@ A pasta [`deploy/`](deploy) tem scripts para um servidor Ubuntu (testados no pla
 | Capitães | Cada time precisa de um capitão. O dono da sala pode sortear. |
 | Moeda | Decide qual time escolhe jogador primeiro. |
 | Jogadores | Os capitães escolhem da sala de espera, na ordem 1-2-2-2-2-1. |
-| Heróis | Começa o time que **não** escolheu jogador primeiro. Ordem: ban, ban, pick 1, pick 2, pick 2, pick 1, ban, ban, pick 1, pick 2, pick 2, pick 1. |
+| Heróis | Começa o time que **não** escolheu jogador primeiro. Ao criar a sala, escolhe-se a ordem: **competitiva** (ban, ban, pick 1, pick 2, pick 2, pick 1, ban, ban, pick 1, pick 2, pick 2, pick 1) ou **alternada** (um de cada time, sempre: 1-1-1-1). |
 | Resultado | Depois de jogar, alguém informa o ID da partida; os stats ficam salvos no histórico. |
 
 ## Estrutura

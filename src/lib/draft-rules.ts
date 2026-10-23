@@ -18,21 +18,43 @@ export const COIN_TOTAL_MS = 2800
 
 export const ROOM_CODE_PATTERN = /^[a-f0-9]{8}$/
 
-// Formato padrão: "a#" = ban do time A, "b2" = 2 picks do time B, etc.
-// Escrito com o time A começando; buildSteps inverte se o time B vencer a moeda.
-const ORDER = "a#-b#-a1-b2-a2-b1-b#-a#-b1-a2-b2-a1"
+// Ordens de ban e pick, escolhidas ao criar a sala. "a#" = ban do time A, "b2" = 2 picks do time B, etc.
+// Escritas com o time A começando; buildSteps inverte se o time B vencer a moeda.
+// competitivo: a ordem dos campeonatos (picks em pares). alternado: um de cada time, sempre (1-1-1...).
+// As duas têm 2 bans e 6 picks por time, então as vagas e o total de etapas são os mesmos.
+export type DraftOrder = "competitivo" | "alternado"
 
-const BASE_STEPS: Step[] = ORDER.split("-").flatMap((turn): Step[] => {
-  const team = turn[0] as Team
-  if (turn[1] === "#") return [{ team, action: "ban" }]
-  return Array.from({ length: Number(turn.slice(1)) }, () => ({ team, action: "pick" }))
-})
+const ORDERS: Record<DraftOrder, string> = {
+  competitivo: "a#-b#-a1-b2-a2-b1-b#-a#-b1-a2-b2-a1",
+  alternado: "a#-b#-a1-b1-a1-b1-a1-b1-a#-b#-a1-b1-a1-b1-a1-b1",
+}
 
-export const TOTAL_STEPS = BASE_STEPS.length
+// pattern: a sequência dos picks.
+export const ORDER_LABELS: Record<DraftOrder, { name: string; pattern: string; hint: string }> = {
+  competitivo: { name: "Competitiva", pattern: "1-2-2-1", hint: "Ordem de campeonato: picks em pares (1-2-2-1)" },
+  alternado: { name: "Alternada", pattern: "1-1-1-1", hint: "Um de cada time, sempre (1-1-1-1)" },
+}
 
-export function buildSteps(first: Team | null): Step[] {
-  if (first !== "b") return BASE_STEPS
-  return BASE_STEPS.map((s) => ({ ...s, team: s.team === "a" ? "b" : "a" }))
+export const parseOrder = (value: unknown): DraftOrder => (value === "alternado" ? "alternado" : "competitivo")
+
+const parseSteps = (order: string): Step[] =>
+  order.split("-").flatMap((turn): Step[] => {
+    const team = turn[0] as Team
+    if (turn[1] === "#") return [{ team, action: "ban" }]
+    return Array.from({ length: Number(turn.slice(1)) }, () => ({ team, action: "pick" }))
+  })
+
+const BASE_STEPS: Record<DraftOrder, Step[]> = {
+  competitivo: parseSteps(ORDERS.competitivo),
+  alternado: parseSteps(ORDERS.alternado),
+}
+
+export const TOTAL_STEPS = BASE_STEPS.competitivo.length
+
+export function buildSteps(first: Team | null, order: DraftOrder = "competitivo"): Step[] {
+  const base = BASE_STEPS[order]
+  if (first !== "b") return base
+  return base.map((s) => ({ ...s, team: s.team === "a" ? "b" : "a" }))
 }
 
 // Escolha de jogadores pelos capitães (formato "snake"): quem ganhou a moeda escolhe 1,
@@ -51,7 +73,7 @@ export type SavedStep = Step & { heroId: number; auto?: boolean }
 export type SavedPlayerPick = { team: Team; id: string; name: string }
 
 export const slotsFor = (team: Team, action: Step["action"]) =>
-  BASE_STEPS.filter((s) => s.team === team && s.action === action).length
+  BASE_STEPS.competitivo.filter((s) => s.team === team && s.action === action).length
 
 // ---------- Estado da sala visto por um jogador ----------
 
@@ -129,6 +151,8 @@ export type RoomView = {
   coinAt: number | null
   actions: number[]
   turnSeconds: number
+  // Ordem de ban e pick escolhida ao criar a sala.
+  order: DraftOrder
   deadline: number | null
   // Chat geral e do seu time juntos, em ordem.
   chat: ChatMessage[]

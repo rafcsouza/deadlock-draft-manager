@@ -1,0 +1,72 @@
+/* Tema "Deadlock": camada visual por cima do globals.css, inspirada no menu do jogo (tons quentes,
+   dourado, cidade em preto e branco ao fundo, granulado de filme e cantos mais retos).
+   Imagens servidas pela Deadlock API (não ficam no repositório).
+   Para voltar ao visual anterior, basta tirar o import deste arquivo em src/app/layout.tsx. */
+
+:root {
+  /* Preto amarronzado no lugar do preto azulado, e bordas puxando para o dourado. */
+  --background: #0d0c0a;
+  --card: #17140f;
+  --muted: #231e17;
+  --muted-foreground: #a3947e;
+  --border: #3b3125;
+
+  /* Dourados da interface do jogo (golden_light / golden_dark da API). */
+  --gold: #c6a269;
+  --gold-dark: #92703c;
+
+  /* Cantos mais retos, como os painéis do jogo. */
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 5px;
+  --radius-2xl: 7px;
+}
+
+/* Cidade em preto e branco ao fundo, bem escura e com tom sépia, com vinheta nas bordas. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at center, transparent 30%, rgb(13 12 10 / 0.9) 100%),
+    url("https://assets-bucket.deadlock-api.com/assets-api-res/images/main_menu/background_nyc_cityscape_bw.webp") center / cover
+      no-repeat;
+  filter: sepia(0.5) brightness(0.28) contrast(1.1);
+}
+
+/* Granulado de filme do menu do jogo, bem leve, por cima de tudo (sem bloquear cliques). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  background: url("https://assets-bucket.deadlock-api.com/assets-api-res/images/main_menu/grain.webp") repeat;
+  background-size: 400px auto;
+  mix-blend-mode: overlay;
+  opacity: 0.07;
+}
+
+/* Painéis: um fio dourado discreto por dentro da borda, como as molduras do jogo. */
+.bg-card\/80,
+.bg-card\/60 {
+  box-shadow: inset 0 0 0 1px rgb(198 162 105 / 0.06);
+}
+
+/* Títulos com um leve brilho dourado. */
+h1.font-display,
+h2.font-display {
+  text-shadow: 0 0 18px rgb(198 162 105 / 0.25);
+}
+
+::selection {
+  background: rgb(198 162 105 / 0.35);
+}
+
+/* Barra de rolagem nas cores do tema. */
+* {
+  scrollbar-color: var(--gold-dark) transparent;
+  scrollbar-width: thin;
+}

@@ -9,10 +9,14 @@ import { playSound, playVoice, preloadSounds } from "@/lib/sound"
 // seja quem for que agiu), comparando com o estado anterior; o carregamento inicial não toca nada.
 // Quando vários acontecem juntos, eles se revezam em vez de tocar um em cima do outro.
 
-// Espera do aviso de "sua vez" quando ele chega junto com um ban/pick (para a fala do herói terminar).
+// Espera do aviso de "sua vez" e da vinheta de fim quando chegam junto com a fala de um herói
+// (para não tocarem um em cima do outro). Sem fala tocando agora, eles entram na hora.
 const AFTER_VOICE_MS = 1200
-// Espera da vinheta de fim depois do último pick (som de confirmar + fala).
-const END_AFTER_MS = 2200
+const END_AFTER_VOICE_MS = 1800
+
+// O que esta tela já tocou na hora do clique (antes da confirmação do servidor), para não repetir:
+// a fala do herói marcado e a vinheta de início de quem clicou em "Iniciar draft".
+export type PlayedEarly = { hero: number | null; start: boolean }
 export function useRoomSounds({
   view,
   meId,
@@ -21,6 +25,7 @@ export function useRoomSounds({
   error,
   now,
   voicesOf,
+  playedEarly,
 }: {
   view: RoomView
   meId: string
@@ -32,6 +37,7 @@ export function useRoomSounds({
   now: number
   // Falas do herói: a positiva quando ele é escolhido, a de morte quando é banido.
   voicesOf: (heroId: number) => Hero["voices"]
+  playedEarly: { current: PlayedEarly }
 }) {
   const prev = useRef<{
     actions: number
@@ -59,17 +65,28 @@ export function useRoomSounds({
 
     // Início do draft (alguém clicou em "Iniciar draft"): a vinheta toca no lugar do giro da moeda.
     const justStarted = snap.started && !p.started
-    if (justStarted) playSound("draftStart")
+    if (justStarted && !playedEarly.current.start) playSound("draftStart")
+    if (justStarted) playedEarly.current.start = false
 
-    // Ban: som de ban + fala de morte do herói. Pick: som de confirmar + fala positiva.
-    // No último passo, a vinheta de fim entra depois da fala.
+    // Ban: som de ban + fala de desdém do herói. Pick: som de confirmar + fala positiva.
+    // Quem agiu já ouviu a fala no clique; os outros ouvem agora, na hora em que a ação chega.
     const acted = snap.actions > p.actions
+    let voiced = false
     if (acted) {
-      const step = buildSteps(view.first)[snap.actions - 1]
-      const voices = voicesOf(view.actions[snap.actions - 1])
+      const heroId = view.actions[snap.actions - 1]
+      const step = buildSteps(view.first, view.order)[snap.actions - 1]
       playSound(step.action)
-      void playVoice(step.action === "pick" ? voices.pick : voices.ban, { delay: 0.3, kind: step.action })
-      if (snap.actions === TOTAL_STEPS) window.setTimeout(() => playSound("finished"), END_AFTER_MS)
+      if (playedEarly.current.hero !== heroId) {
+        const voices = voicesOf(heroId)
+        void playVoice(step.action === "pick" ? voices.pick : voices.ban, { kind: step.action })
+        voiced = true
+      }
+      // Qualquer ação encerra a marcação (inclusive a escolha automática quando o tempo acaba).
+      playedEarly.current.hero = null
+      if (snap.actions === TOTAL_STEPS) {
+        if (voiced) window.setTimeout(() => playSound("finished"), END_AFTER_VOICE_MS)
+        else playSound("finished")
+      }
     }
     if (snap.picks > p.picks) playSound("playerPick")
     else if (snap.picks < p.picks && view.playerFirst) playSound("undo")
@@ -85,7 +102,7 @@ export function useRoomSounds({
     }
 
     if (snap.myTurn && !p.myTurn && snap.actions < TOTAL_STEPS) {
-      if (acted) window.setTimeout(() => playSound("yourTurn"), AFTER_VOICE_MS)
+      if (voiced) window.setTimeout(() => playSound("yourTurn"), AFTER_VOICE_MS)
       else playSound("yourTurn")
     }
     // now muda várias vezes por segundo; só os campos da sala importam aqui.

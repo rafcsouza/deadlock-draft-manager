@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth"
 import { getHeroes } from "@/lib/heroes"
 import { BackLink } from "@/components/back-link"
 import { SoundMenu } from "@/components/sound-toggle"
+import { InfoButton } from "@/components/info-button"
 import { Awards, EloBadge, FormDots, Pairs, Podium, ProvisionalList } from "@/components/leaderboard-extras"
 import { ELO, getLeaderboard, MIN_MATCHES, POINTS, type LeaderboardRow } from "@/lib/leaderboard"
 import { getLeaderboardExtras } from "@/lib/leaderboard-extras"
@@ -49,6 +50,9 @@ export default async function LeaderboardsPage({ searchParams }: { searchParams:
         <BackLink />
         <h1 className="font-display text-2xl font-bold uppercase tracking-wide">Leaderboard</h1>
         <span className="ml-auto text-xs text-muted-foreground">{rows.length} jogadores</span>
+        <InfoButton title="Como funciona o ranking">
+          <ScoringHelp />
+        </InfoButton>
         <SoundMenu label />
       </header>
 
@@ -170,9 +174,31 @@ export default async function LeaderboardsPage({ searchParams }: { searchParams:
         </>
       )}
 
-      <details className="mt-4 rounded-2xl border border-border bg-card/60 p-4 text-sm text-muted-foreground">
-        <summary className="cursor-pointer font-semibold text-foreground">Como os pontos e o Elo são calculados</summary>
-        <p className="mt-3 font-semibold text-foreground">Elo</p>
+    </main>
+  )
+}
+
+// Explicação da pontuação, do Elo e da tabela (aberta pelo botão "i" no topo).
+function ScoringHelp() {
+  return (
+    <div className="mt-4 space-y-4">
+      <section>
+        <p className="font-semibold text-foreground">Pontos</p>
+        <ul className="mt-1 list-disc space-y-1 pl-5">
+          <li>Todo mundo começa com 0 pontos, e ninguém perde pontos.</li>
+          <li>Vitória: +{POINTS.win}. Derrota: nada.</li>
+          <li>
+            Sequência de vitórias: a 2ª vitória seguida vale +{POINTS.winStreak2}, e da 3ª em diante +{POINTS.winStreak3}.
+          </li>
+          <li>
+            Os 3 melhores da partida ganham bônus, mesmo no time que perdeu: MVP +{POINTS.mvpBonus[1]}, 2º +{POINTS.mvpBonus[2]}, 3º +
+            {POINTS.mvpBonus[3]}.
+          </li>
+          <li>Empate em pontos: fica na frente quem tem mais vitórias, depois o melhor KDA.</li>
+        </ul>
+      </section>
+      <section>
+        <p className="font-semibold text-foreground">Elo</p>
         <ul className="mt-1 list-disc space-y-1 pl-5">
           <li>Todo mundo começa com {ELO.start}. O Elo não cresce só por jogar mais: cada partida pode subir ou descer.</li>
           <li>
@@ -184,33 +210,27 @@ export default async function LeaderboardsPage({ searchParams }: { searchParams:
             {ELO.mvpBonus[3]}.
           </li>
           <li>
-            Com menos de {ELO.minMatches} partidas o Elo fica "em calibração": ainda é calculado, mas não aparece e, na ordem por
-            Elo, a pessoa fica no fim, sem posição.
+            Com menos de {ELO.minMatches} partidas o Elo fica &quot;em calibração&quot;: ainda é calculado, mas não aparece e, na ordem
+            por Elo, a pessoa fica no fim, sem posição.
           </li>
           <li>A patente segue as do Deadlock: começa em Mystic 1, e cada patente (de Initiate a Eternus) vale 40 de Elo.</li>
         </ul>
-        <p className="mt-4 font-semibold text-foreground">Pontos</p>
+      </section>
+      <section>
+        <p className="font-semibold text-foreground">Tabela</p>
         <ul className="mt-1 list-disc space-y-1 pl-5">
-          <li>Todo mundo começa com 0 pontos, e ninguém perde pontos.</li>
-          <li>
-            Vitória: +{POINTS.win}. Derrota: nada.
-          </li>
-          <li>
-            Sequência de vitórias: a 2ª vitória seguida vale +{POINTS.winStreak2}, e da 3ª em diante +{POINTS.winStreak3}.
-          </li>
-          <li>
-            Os 3 melhores da partida ganham bônus, mesmo no time que perdeu: MVP +{POINTS.mvpBonus[1]}, 2º +{POINTS.mvpBonus[2]}, 3º +
-            {POINTS.mvpBonus[3]}.
-          </li>
-          <li>Empate em pontos: fica na frente quem tem mais vitórias, depois o melhor KDA.</li>
-          <li>K, M e A são o total de abates, mortes e assistências; o KDA é (abates + assistências) ÷ mortes.</li>
-          <li>Com menos de {MIN_MATCHES} partidas, o jogador fica "em avaliação": fica fora da tabela, numa lista recolhida logo abaixo dela.</li>
-          <li>As bolinhas mostram as últimas 5 partidas (verde vitória, vermelho derrota; a mais recente à direita).</li>
-          <li>Prêmios, duplas e rivalidades contam só quem já tem posição; duplas e rivalidades precisam de pelo menos 3 partidas.</li>
+          <li>Clique no título de uma coluna (Pontos, Elo, Jogos, % Vit., K, M, A, KDA...) para ordenar por ela.</li>
           <li>As setas mostram quantas posições cada um subiu (▲) ou caiu (▼) com a última partida.</li>
+          <li>As bolinhas mostram as últimas 5 partidas (verde vitória, vermelho derrota; a mais recente à direita).</li>
+          <li>K, M e A são o total de abates, mortes e assistências; o KDA é (abates + assistências) ÷ mortes.</li>
+          <li>
+            Com menos de {MIN_MATCHES} partidas, o jogador fica &quot;em avaliação&quot;: fora da tabela, numa lista recolhida logo
+            abaixo dela.
+          </li>
+          <li>Prêmios, duplas e rivalidades contam só quem já tem posição; duplas e rivalidades precisam de pelo menos 3 partidas.</li>
         </ul>
-      </details>
-    </main>
+      </section>
+    </div>
   )
 }
 

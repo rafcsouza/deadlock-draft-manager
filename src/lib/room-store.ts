@@ -8,6 +8,7 @@ import { fetchMatchStats } from "@/lib/match-stats"
 import {
   buildPlayerSteps,
   buildSteps,
+  type DraftOrder,
   CHAT_IMAGE_MAX_BYTES,
   COIN_TOTAL_MS,
   TOTAL_STEPS,
@@ -62,6 +63,8 @@ type Room = {
   coinAt: number | null
   actions: number[]
   turnSeconds: number
+  // Ordem de ban e pick (competitiva ou alternada), escolhida ao criar a sala.
+  order: DraftOrder
   deadline: number | null
   chat: { geral: ChatMessage[]; a: ChatMessage[]; b: ChatMessage[] }
   // Imagens do chat, só em memória: somem quando a sala é removida (ninguém nela por um tempo).
@@ -133,6 +136,7 @@ function getRoom(code: string, heroIds: number[]) {
       coinAt: null,
       actions: [],
       turnSeconds: TURN_MIN,
+      order: "competitivo",
       deadline: null,
       chat: { geral: [], a: [], b: [] },
       images: new Map(),
@@ -217,6 +221,7 @@ function viewFor(room: Room, userId: string): RoomView {
     coinAt: room.coinAt,
     actions: room.actions,
     turnSeconds: room.turnSeconds,
+    order: room.order,
     deadline: room.deadline,
     chat: [...room.chat.geral, ...(myTeam ? room.chat[myTeam] : [])].sort((x, y) => x.at - y.at),
     result: room.result,
@@ -234,15 +239,16 @@ function broadcast(room: Room) {
 // ---------- Criação e salas abertas ----------
 
 // Cria a sala já com o dono e a visibilidade escolhidos em "Criar Draft".
-export function createRoom(code: string, heroIds: number[], hostId: string, open: boolean) {
+export function createRoom(code: string, heroIds: number[], hostId: string, open: boolean, order: DraftOrder) {
   const room = getRoom(code, heroIds)
   room.hostId ??= hostId
   room.open = open
+  room.order = order
   // Ainda sem ninguém conectado: conta como vazia até o dono entrar (some sozinha se ele desistir).
   room.emptySince ??= Date.now()
 }
 
-export type OpenRoom = { code: string; host: string; players: number; phase: string }
+export type OpenRoom = { code: string; host: string; players: number; phase: string; order: DraftOrder }
 
 // Salas abertas com alguém dentro, para a página inicial.
 export function listOpenRooms(): OpenRoom[] {
@@ -255,6 +261,7 @@ export function listOpenRooms(): OpenRoom[] {
         code: room.code,
         host: (room.hostId && room.users.get(room.hostId)?.name) || "?",
         players: online.size,
+        order: room.order,
         people,
         phase: !started(room)
           ? "Esperando capitães"
@@ -543,7 +550,7 @@ function finishPlayerPicks(room: Room) {
 
 function currentStep(room: Room) {
   if (!room.first || finished(room)) return null
-  return buildSteps(room.first)[room.actions.length]
+  return buildSteps(room.first, room.order)[room.actions.length]
 }
 
 function choose(room: Room, heroId: number): string | null {
@@ -608,7 +615,7 @@ export async function submitMatch(code: string, userId: string, rawId: string): 
 
 // Liga os times da API (0/1) aos times do draft pelos heróis escolhidos.
 function buildResult(room: Room, stats: Awaited<ReturnType<typeof fetchMatchStats>>): MatchResultView {
-  const steps = buildSteps(room.first)
+  const steps = buildSteps(room.first, room.order)
   const picks = (team: Team) => new Set(room.actions.filter((_, i) => steps[i].team === team && steps[i].action === "pick"))
   const draftPicks = { a: picks("a"), b: picks("b") }
   const overlap = (apiTeam: 0 | 1, team: Team) =>
@@ -620,7 +627,7 @@ function buildResult(room: Room, stats: Awaited<ReturnType<typeof fetchMatchStat
 }
 
 function saveDraft(room: Room, result: MatchResultView) {
-  const steps = buildSteps(room.first)
+  const steps = buildSteps(room.first, room.order)
   const players = (team: Team) => room.teams[team].map((uid) => ({ id: uid, name: room.users.get(uid)?.name ?? "?" }))
   return saveMatch(result, {
     roomCode: room.code,

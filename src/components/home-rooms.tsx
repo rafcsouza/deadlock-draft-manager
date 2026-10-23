@@ -3,11 +3,14 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { ORDER_LABELS, type DraftOrder } from "@/lib/draft-rules"
 import type { OpenRoom } from "@/lib/room-store"
 
-// "Criar Draft": escolhe se a sala é aberta (aparece aqui na página inicial) ou só por convite.
+// "Criar Draft": escolhe a ordem de bans e picks e se a sala é aberta (aparece aqui na página inicial) ou só por convite.
 export function CreateDraftButton() {
   const [open, setOpen] = useState(false)
+  const [order, setOrder] = useState<DraftOrder>("competitivo")
+  const suffix = order === "alternado" ? "&ordem=alternado" : ""
   const primary = "bg-team-gradient flex h-12 w-full items-center justify-between rounded-xl px-5 text-sm font-bold text-white shadow-lg shadow-black/40 transition-all hover:-translate-y-0.5"
 
   if (!open) {
@@ -20,8 +23,23 @@ export function CreateDraftButton() {
   }
   return (
     <div className="space-y-2 rounded-xl border border-border bg-muted/40 p-2">
-      <p className="px-1 text-left text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Quem pode entrar?</p>
-      <Link href="/draft/novo?tipo=aberta" className={`${primary} h-auto py-2.5`}>
+      <p className="px-1 text-left text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Ordem do draft</p>
+      <div className="grid grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1" role="radiogroup" aria-label="Ordem do draft">
+        {(Object.keys(ORDER_LABELS) as DraftOrder[]).map((o) => (
+          <button
+            key={o}
+            role="radio"
+            aria-checked={order === o}
+            onClick={() => setOrder(o)}
+            className={`rounded-lg px-2 py-1.5 text-left transition-colors ${order === o ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            <span className="block text-xs font-bold">{ORDER_LABELS[o].name}</span>
+            <span className="block text-[10px] leading-tight opacity-80">{ORDER_LABELS[o].hint}</span>
+          </button>
+        ))}
+      </div>
+      <p className="px-1 pt-1 text-left text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Quem pode entrar?</p>
+      <Link href={`/draft/novo?tipo=aberta${suffix}`} className={`${primary} h-auto py-2.5`}>
         <span className="text-left">
           Sala aberta
           <span className="block text-[11px] font-normal opacity-80">Aparece aqui na página inicial para todos</span>
@@ -29,7 +47,7 @@ export function CreateDraftButton() {
         <span aria-hidden="true">→</span>
       </Link>
       <Link
-        href="/draft/novo?tipo=convite"
+        href={`/draft/novo?tipo=convite${suffix}`}
         className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-5 py-2.5 text-sm font-bold text-foreground transition-colors hover:border-muted-foreground/50"
       >
         <span className="text-left">
@@ -74,7 +92,7 @@ export function OpenRooms({ rooms }: { rooms: OpenRoom[] }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">Sala de {room.host}</span>
                   <span className="block text-[11px] text-muted-foreground">
-                    {room.players} {room.players === 1 ? "jogador" : "jogadores"} · {room.phase}
+                    {room.players} {room.players === 1 ? "jogador" : "jogadores"} · {room.phase} · ordem {ORDER_LABELS[room.order].name.toLowerCase()}
                   </span>
                 </span>
                 <span className="bg-team-gradient shrink-0 rounded-md px-2.5 py-1 text-xs font-bold text-white">Entrar</span>

@@ -4,6 +4,8 @@ import { ClickSounds } from "@/components/click-sounds"
 import { FloatingSoundMenu } from "@/components/sound-toggle"
 import { site } from "@/lib/site"
 import "./globals.css"
+// Visual inspirado no menu do Deadlock. Para voltar ao anterior, apague esta linha.
+import "./tema-deadlock.css"
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" })
 const oswald = Oswald({ subsets: ["latin"], variable: "--font-oswald" })
